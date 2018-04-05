@@ -1,0 +1,34 @@
+From 86ee86d79701b81c32a061c475a639f12221bf9c Mon Sep 17 00:00:00 2001
+From: md_5 <git@md-5.net>
+Date: Wed, 22 Jul 2015 19:04:37 +1000
+Subject: [PATCH] Clear Packet Queue on Disconnect
+
+
+diff --git a/src/main/java/net/minecraft/server/NetworkManager.java b/src/main/java/net/minecraft/server/NetworkManager.java
+index ca32aa337..d583cced6 100644
+--- a/src/main/java/net/minecraft/server/NetworkManager.java
++++ b/src/main/java/net/minecraft/server/NetworkManager.java
+@@ -320,6 +320,7 @@ public class NetworkManager extends SimpleChannelInboundHandler<Packet<?>> {
+                 } else if (this.i() != null) {
+                     this.i().a(new ChatMessage("multiplayer.disconnect.generic", new Object[0]));
+                 }
++                this.i.clear(); // Free up packet queue.
+             }
+ 
+         }
+diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
+index 150bb0816..8cede938a 100644
+--- a/src/main/java/net/minecraft/server/PlayerConnection.java
++++ b/src/main/java/net/minecraft/server/PlayerConnection.java
+@@ -1126,7 +1126,7 @@ public class PlayerConnection implements PacketListenerPlayIn, ITickable {
+         }
+ 
+         // CraftBukkit start
+-        if (packet == null) {
++        if (packet == null || this.processedDisconnect) { // Spigot
+             return;
+         } else if (packet instanceof PacketPlayOutSpawnPosition) {
+             PacketPlayOutSpawnPosition packet6 = (PacketPlayOutSpawnPosition) packet;
+-- 
+2.14.1
+

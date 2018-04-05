@@ -1,0 +1,33 @@
+From 9ff1f7db0167530f0369051cc07f4756d3381d1f Mon Sep 17 00:00:00 2001
+From: md_5 <git@md-5.net>
+Date: Mon, 20 Jan 2014 13:44:07 +1100
+Subject: [PATCH] Catch stalling on corrupted map data / NBT arrays.
+
+
+diff --git a/src/main/java/net/minecraft/server/NBTTagByteArray.java b/src/main/java/net/minecraft/server/NBTTagByteArray.java
+index e880df5a6..c4a88e463 100644
+--- a/src/main/java/net/minecraft/server/NBTTagByteArray.java
++++ b/src/main/java/net/minecraft/server/NBTTagByteArray.java
+@@ -40,6 +40,7 @@ public class NBTTagByteArray extends NBTBase {
+     void load(DataInput datainput, int i, NBTReadLimiter nbtreadlimiter) throws IOException {
+         nbtreadlimiter.a(192L);
+         int j = datainput.readInt();
++       com.google.common.base.Preconditions.checkArgument( j < 1 << 24);
+ 
+         nbtreadlimiter.a((long) (8 * j));
+         this.data = new byte[j];
+diff --git a/src/main/java/net/minecraft/server/NBTTagIntArray.java b/src/main/java/net/minecraft/server/NBTTagIntArray.java
+index 1e2056496..0e6ba927d 100644
+--- a/src/main/java/net/minecraft/server/NBTTagIntArray.java
++++ b/src/main/java/net/minecraft/server/NBTTagIntArray.java
+@@ -48,6 +48,7 @@ public class NBTTagIntArray extends NBTBase {
+     void load(DataInput datainput, int i, NBTReadLimiter nbtreadlimiter) throws IOException {
+         nbtreadlimiter.a(192L);
+         int j = datainput.readInt();
++       com.google.common.base.Preconditions.checkArgument( j < 1 << 24);
+ 
+         nbtreadlimiter.a((long) (32 * j));
+         this.data = new int[j];
+-- 
+2.14.1
+

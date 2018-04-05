@@ -1,0 +1,88 @@
+From e24217d3fed0b30eda505ef92872e122b87c834d Mon Sep 17 00:00:00 2001
+From: Thinkofdeath <thinkofdeath@spigotmc.org>
+Date: Sun, 29 Jun 2014 21:10:34 +0100
+Subject: [PATCH] Limit block placement/interaction packets
+
+
+diff --git a/src/main/java/net/minecraft/server/PacketPlayInBlockPlace.java b/src/main/java/net/minecraft/server/PacketPlayInBlockPlace.java
+index 43310e8a3..961113316 100644
+--- a/src/main/java/net/minecraft/server/PacketPlayInBlockPlace.java
++++ b/src/main/java/net/minecraft/server/PacketPlayInBlockPlace.java
+@@ -5,6 +5,7 @@ import java.io.IOException;
+ public class PacketPlayInBlockPlace implements Packet<PacketListenerPlayIn> {
+ 
+     private EnumHand a;
++    public long timestamp; // Spigot
+ 
+     public PacketPlayInBlockPlace() {}
+ 
+@@ -13,6 +14,7 @@ public class PacketPlayInBlockPlace implements Packet<PacketListenerPlayIn> {
+     }
+ 
+     public void a(PacketDataSerializer packetdataserializer) throws IOException {
++        this.timestamp = System.currentTimeMillis(); // Spigot
+         this.a = (EnumHand) packetdataserializer.a(EnumHand.class);
+     }
+ 
+diff --git a/src/main/java/net/minecraft/server/PacketPlayInUseItem.java b/src/main/java/net/minecraft/server/PacketPlayInUseItem.java
+index bdcda81cc..5f45300f1 100644
+--- a/src/main/java/net/minecraft/server/PacketPlayInUseItem.java
++++ b/src/main/java/net/minecraft/server/PacketPlayInUseItem.java
+@@ -10,10 +10,12 @@ public class PacketPlayInUseItem implements Packet<PacketListenerPlayIn> {
+     private float d;
+     private float e;
+     private float f;
++    public long timestamp;
+ 
+     public PacketPlayInUseItem() {}
+ 
+     public void a(PacketDataSerializer packetdataserializer) throws IOException {
++        this.timestamp = System.currentTimeMillis(); // Spigot
+         this.a = packetdataserializer.e();
+         this.b = (EnumDirection) packetdataserializer.a(EnumDirection.class);
+         this.c = (EnumHand) packetdataserializer.a(EnumHand.class);
+diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
+index 0e6bdfc7e..a34654eb6 100644
+--- a/src/main/java/net/minecraft/server/PlayerConnection.java
++++ b/src/main/java/net/minecraft/server/PlayerConnection.java
+@@ -905,9 +905,29 @@ public class PlayerConnection implements PacketListenerPlayIn, ITickable {
+         // CraftBukkit end
+     }
+ 
++    // Spigot start - limit place/interactions
++    private int limitedPackets;
++    private long lastLimitedPacket = -1;
++
++    private boolean checkLimit(long timestamp) {
++        if (lastLimitedPacket != -1 && timestamp - lastLimitedPacket < 30 && limitedPackets++ >= 4) {
++            return false;
++        }
++
++        if (lastLimitedPacket == -1 || timestamp - lastLimitedPacket >= 30) {
++            lastLimitedPacket = timestamp;
++            limitedPackets = 0;
++            return true;
++        }
++
++        return true;
++    }
++    // Spigot end
++
+     public void a(PacketPlayInUseItem packetplayinuseitem) {
+         PlayerConnectionUtils.ensureMainThread(packetplayinuseitem, this, this.player.x());
+         if (this.player.isFrozen()) return; // CraftBukkit
++        if (!checkLimit(packetplayinuseitem.timestamp)) return; // Spigot - check limit
+         WorldServer worldserver = this.minecraftServer.getWorldServer(this.player.dimension);
+         EnumHand enumhand = packetplayinuseitem.c();
+         ItemStack itemstack = this.player.b(enumhand);
+@@ -938,6 +958,7 @@ public class PlayerConnection implements PacketListenerPlayIn, ITickable {
+     public void a(PacketPlayInBlockPlace packetplayinblockplace) {
+         PlayerConnectionUtils.ensureMainThread(packetplayinblockplace, this, this.player.x());
+         if (this.player.isFrozen()) return; // CraftBukkit
++        if (!checkLimit(packetplayinblockplace.timestamp)) return; // Spigot - check limit
+         WorldServer worldserver = this.minecraftServer.getWorldServer(this.player.dimension);
+         EnumHand enumhand = packetplayinblockplace.a();
+         ItemStack itemstack = this.player.b(enumhand);
+-- 
+2.14.1
+

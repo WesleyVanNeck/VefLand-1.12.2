@@ -1,0 +1,115 @@
+From 4f22a16ebdc7395e2df84d557cb86db63ad9ed9e Mon Sep 17 00:00:00 2001
+From: md_5 <git@md-5.net>
+Date: Fri, 4 Jul 2014 13:28:45 +1000
+Subject: [PATCH] Further Seed Customisation
+
+Allow server admins that really want to to customise the seeds used in world generation even further.
+
+diff --git a/src/main/java/net/minecraft/server/EntitySlime.java b/src/main/java/net/minecraft/server/EntitySlime.java
+index f1afb000c..272b22652 100644
+--- a/src/main/java/net/minecraft/server/EntitySlime.java
++++ b/src/main/java/net/minecraft/server/EntitySlime.java
+@@ -252,7 +252,7 @@ public class EntitySlime extends EntityInsentient implements IMonster {
+                     return super.P();
+                 }
+ 
+-                if (this.random.nextInt(10) == 0 && chunk.a(987234911L).nextInt(10) == 0 && this.locY < 40.0D) {
++                if (this.random.nextInt(10) == 0 && chunk.a(world.spigotConfig.slimeSeed).nextInt(10) == 0 && this.locY < 40.0D) { // Spigot
+                     return super.P();
+                 }
+             }
+diff --git a/src/main/java/net/minecraft/server/WorldGenLargeFeature.java b/src/main/java/net/minecraft/server/WorldGenLargeFeature.java
+index 5781a173c..7a76544ff 100644
+--- a/src/main/java/net/minecraft/server/WorldGenLargeFeature.java
++++ b/src/main/java/net/minecraft/server/WorldGenLargeFeature.java
+@@ -54,7 +54,7 @@ public class WorldGenLargeFeature extends StructureGenerator {
+ 
+         int i1 = i / this.d;
+         int j1 = j / this.d;
+-        Random random = this.g.a(i1, j1, 14357617);
++        Random random = this.g.a(i1, j1, this.g.spigotConfig.largeFeatureSeed); // Spigot
+ 
+         i1 *= this.d;
+         j1 *= this.d;
+@@ -83,7 +83,7 @@ public class WorldGenLargeFeature extends StructureGenerator {
+ 
+     public BlockPosition getNearestGeneratedFeature(World world, BlockPosition blockposition, boolean flag) {
+         this.g = world;
+-        return a(world, this, blockposition, this.d, 8, 14357617, false, 100, flag);
++        return a(world, this, blockposition, this.d, 8, this.g.spigotConfig.largeFeatureSeed, false, 100, flag); // Spigot
+     }
+ 
+     protected StructureStart b(int i, int j) {
+diff --git a/src/main/java/net/minecraft/server/WorldGenMonument.java b/src/main/java/net/minecraft/server/WorldGenMonument.java
+index 89a52f9c4..927d9bc6b 100644
+--- a/src/main/java/net/minecraft/server/WorldGenMonument.java
++++ b/src/main/java/net/minecraft/server/WorldGenMonument.java
+@@ -57,7 +57,7 @@ public class WorldGenMonument extends StructureGenerator {
+ 
+         int i1 = i / this.d;
+         int j1 = j / this.d;
+-        Random random = this.g.a(i1, j1, 10387313);
++        Random random = this.g.a(i1, j1, this.g.spigotConfig.monumentSeed); // Spigot
+ 
+         i1 *= this.d;
+         j1 *= this.d;
+@@ -80,7 +80,7 @@ public class WorldGenMonument extends StructureGenerator {
+ 
+     public BlockPosition getNearestGeneratedFeature(World world, BlockPosition blockposition, boolean flag) {
+         this.g = world;
+-        return a(world, this, blockposition, this.d, this.h, 10387313, true, 100, flag);
++        return a(world, this, blockposition, this.d, this.h, this.g.spigotConfig.monumentSeed, true, 100, flag); // Spigot
+     }
+ 
+     protected StructureStart b(int i, int j) {
+diff --git a/src/main/java/net/minecraft/server/WorldGenVillage.java b/src/main/java/net/minecraft/server/WorldGenVillage.java
+index 11a6ef7e5..fd82756ad 100644
+--- a/src/main/java/net/minecraft/server/WorldGenVillage.java
++++ b/src/main/java/net/minecraft/server/WorldGenVillage.java
+@@ -53,7 +53,7 @@ public class WorldGenVillage extends StructureGenerator {
+ 
+         int i1 = i / this.d;
+         int j1 = j / this.d;
+-        Random random = this.g.a(i1, j1, 10387312);
++        Random random = this.g.a(i1, j1, this.g.spigotConfig.villageSeed); // Spigot
+ 
+         i1 *= this.d;
+         j1 *= this.d;
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftChunk.java b/src/main/java/org/bukkit/craftbukkit/CraftChunk.java
+index 0cc838ccf..ba3676b67 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftChunk.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftChunk.java
+@@ -133,7 +133,7 @@ public class CraftChunk implements Chunk {
+     @Override
+     public boolean isSlimeChunk() {
+         // 987234911L is deterimined in EntitySlime when seeing if a slime can spawn in a chunk
+-        return getHandle().a(987234911L).nextInt(10) == 0;
++        return getHandle().a(worldServer.spigotConfig.slimeSeed).nextInt(10) == 0;
+     }
+ 
+     public boolean unload(boolean save) {
+diff --git a/src/main/java/org/spigotmc/SpigotWorldConfig.java b/src/main/java/org/spigotmc/SpigotWorldConfig.java
+index d9707c98b..46026fd0d 100644
+--- a/src/main/java/org/spigotmc/SpigotWorldConfig.java
++++ b/src/main/java/org/spigotmc/SpigotWorldConfig.java
+@@ -243,4 +243,17 @@ public class SpigotWorldConfig
+     {
+         witherSpawnSoundRadius = getInt( "wither-spawn-sound-radius", 0 );
+     }
++
++    public int villageSeed;
++    public int largeFeatureSeed;
++    public int monumentSeed;
++    public int slimeSeed;
++    private void initWorldGenSeeds()
++    {
++        villageSeed = getInt( "seed-village", 10387312 );
++        largeFeatureSeed = getInt( "seed-feature", 14357617 );
++        monumentSeed = getInt( "seed-monument", 10387313 );
++        slimeSeed = getInt( "seed-slime", 987234911 );
++        log( "Custom Map Seeds:  Village: " + villageSeed + " Feature: " + largeFeatureSeed + " Monument: "  + monumentSeed + " Slime: " + slimeSeed );
++    }
+ }
+-- 
+2.14.1
+

@@ -1,0 +1,304 @@
+From 89e82d5418fb9f14ac5a57e5462781df5bf28c0a Mon Sep 17 00:00:00 2001
+From: Geoff Crossland <gcrossland+bukkit@gmail.com>
+Date: Fri, 11 Aug 2017 19:23:58 +0100
+Subject: [PATCH] Make unloaded chunk saving more asynchronous
+
+
+diff --git a/src/main/java/net/minecraft/server/ChunkProviderServer.java b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+index 960464845..ac478fb27 100644
+--- a/src/main/java/net/minecraft/server/ChunkProviderServer.java
++++ b/src/main/java/net/minecraft/server/ChunkProviderServer.java
+@@ -196,17 +196,17 @@ public class ChunkProviderServer implements IChunkProvider {
+ 
+     public void saveChunkNOP(Chunk chunk) {
+         try {
+-            this.chunkLoader.b(this.world, chunk);
++            // this.chunkLoader.b(this.world, chunk); // Spigot
+         } catch (Exception exception) {
+             ChunkProviderServer.a.error("Couldn\'t save entities", exception);
+         }
+ 
+     }
+ 
+-    public void saveChunk(Chunk chunk) {
++    public void saveChunk(Chunk chunk, boolean unloaded) { // Spigot
+         try {
+             chunk.setLastSaved(this.world.getTime());
+-            this.chunkLoader.saveChunk(this.world, chunk);
++            this.chunkLoader.saveChunk(this.world, chunk, unloaded); // Spigot
+         } catch (IOException ioexception) {
+             ChunkProviderServer.a.error("Couldn\'t save chunk", ioexception);
+         } catch (ExceptionWorldConflict exceptionworldconflict) {
+@@ -229,7 +229,7 @@ public class ChunkProviderServer implements IChunkProvider {
+             }
+ 
+             if (chunk.a(flag)) {
+-                this.saveChunk(chunk);
++                this.saveChunk(chunk, false); // Spigot
+                 chunk.f(false);
+                 ++i;
+                 if (i == 24 && !flag && false) { // Spigot
+@@ -313,7 +313,7 @@ public class ChunkProviderServer implements IChunkProvider {
+         // Moved from unloadChunks above
+         chunk.removeEntities();
+         if (save) {
+-            this.saveChunk(chunk);
++            this.saveChunk(chunk, true); // Spigot
+             this.saveChunkNOP(chunk);
+         }
+         this.chunks.remove(chunk.chunkKey);
+diff --git a/src/main/java/net/minecraft/server/ChunkRegionLoader.java b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
+index e0e4c9a0e..50ec3adb8 100644
+--- a/src/main/java/net/minecraft/server/ChunkRegionLoader.java
++++ b/src/main/java/net/minecraft/server/ChunkRegionLoader.java
+@@ -14,17 +14,22 @@ import java.util.Set;
+ import javax.annotation.Nullable;
+ import org.apache.logging.log4j.LogManager;
+ import org.apache.logging.log4j.Logger;
++// Spigot start
++import java.util.function.Supplier;
++import org.spigotmc.SupplierUtils;
++// Spigot end
+ 
+ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+ 
+     private static final Logger a = LogManager.getLogger();
+-    private final Map<ChunkCoordIntPair, NBTTagCompound> b = Maps.newConcurrentMap();
++    private final Map<ChunkCoordIntPair, Supplier<NBTTagCompound>> b = Maps.newConcurrentMap(); // Spigot
+     // CraftBukkit
+     // private final Set<ChunkCoordIntPair> c = Collections.newSetFromMap(Maps.newConcurrentMap());
+     private final File d;
+     private final DataConverterManager e;
+     // private boolean f;
+     // CraftBukkit
++    private static final double SAVE_QUEUE_TARGET_SIZE = 625; // Spigot
+ 
+     public ChunkRegionLoader(File file, DataConverterManager dataconvertermanager) {
+         this.d = file;
+@@ -50,7 +55,7 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+     public Object[] loadChunk(World world, int i, int j) throws IOException {
+         // CraftBukkit end
+         ChunkCoordIntPair chunkcoordintpair = new ChunkCoordIntPair(i, j);
+-        NBTTagCompound nbttagcompound = (NBTTagCompound) this.b.get(chunkcoordintpair);
++        NBTTagCompound nbttagcompound = SupplierUtils.getIfExists(this.b.get(chunkcoordintpair)); // Spigot
+ 
+         if (nbttagcompound == null) {
+             // CraftBukkit start
+@@ -69,7 +74,7 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+ 
+     public boolean chunkExists(int i, int j) {
+         ChunkCoordIntPair chunkcoordintpair = new ChunkCoordIntPair(i, j);
+-        NBTTagCompound nbttagcompound = (NBTTagCompound) this.b.get(chunkcoordintpair);
++        Supplier<NBTTagCompound> nbttagcompound = this.b.get(chunkcoordintpair); // Spigot
+ 
+         return nbttagcompound != null ? true : RegionFileCache.chunkExists(this.d, i, j);
+     }
+@@ -118,7 +123,7 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+         }
+     }
+ 
+-    public void saveChunk(World world, Chunk chunk) throws IOException, ExceptionWorldConflict {
++    public void saveChunk(World world, Chunk chunk, boolean unloaded) throws IOException, ExceptionWorldConflict { // Spigot
+         world.checkSession();
+ 
+         try {
+@@ -127,15 +132,27 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+ 
+             nbttagcompound.set("Level", nbttagcompound1);
+             nbttagcompound.setInt("DataVersion", 1343);
+-            this.saveBody(chunk, world, nbttagcompound1);
+-            this.a(chunk.k(), nbttagcompound);
++
++            // Spigot start
++            final long worldTime = world.getTime();
++            final boolean worldHasSkyLight = world.worldProvider.m();
++            saveEntities(nbttagcompound1, chunk, world);
++            Supplier<NBTTagCompound> completion = new Supplier<NBTTagCompound>() {
++                public NBTTagCompound get() {
++                    saveBody(nbttagcompound1, chunk, worldTime, worldHasSkyLight);
++                    return nbttagcompound;
++                }
++            };
++
++            this.a(chunk.k(), SupplierUtils.createUnivaluedSupplier(completion, unloaded && this.b.size() < SAVE_QUEUE_TARGET_SIZE));
++            // Spigot end
+         } catch (Exception exception) {
+             ChunkRegionLoader.a.error("Failed to save chunk", exception);
+         }
+ 
+     }
+ 
+-    protected void a(ChunkCoordIntPair chunkcoordintpair, NBTTagCompound nbttagcompound) {
++    protected void a(ChunkCoordIntPair chunkcoordintpair, Supplier<NBTTagCompound> nbttagcompound) { // Spigot
+         // CraftBukkit
+         // if (!this.c.contains(chunkcoordintpair))
+         {
+@@ -151,7 +168,7 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+     }
+ 
+     private synchronized boolean processSaveQueueEntry(boolean logCompletion) {
+-        Iterator<Map.Entry<ChunkCoordIntPair, NBTTagCompound>> iter = this.b.entrySet().iterator();
++        Iterator<Map.Entry<ChunkCoordIntPair, Supplier<NBTTagCompound>>> iter = this.b.entrySet().iterator(); // Spigot
+         if (!iter.hasNext()) {
+             if (logCompletion) {
+                 // CraftBukkit end
+@@ -161,16 +178,16 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+             return false;
+         } else {
+             // CraftBukkit start
+-            Map.Entry<ChunkCoordIntPair, NBTTagCompound> entry = iter.next();
++            Map.Entry<ChunkCoordIntPair, Supplier<NBTTagCompound>> entry = iter.next(); // Spigot
+             ChunkCoordIntPair chunkcoordintpair = entry.getKey();
+-            NBTTagCompound nbttagcompound = entry.getValue();
++            Supplier<NBTTagCompound> value = entry.getValue(); // Spigot
+             // CraftBukkit end
+ 
+             boolean flag;
+ 
+             try {
+                 // this.c.add(chunkcoordintpair);
+-                // NBTTagCompound nbttagcompound = (NBTTagCompound) this.b.remove(chunkcoordintpair);
++                NBTTagCompound nbttagcompound = SupplierUtils.getIfExists(value); // Spigot
+                 // CraftBukkit
+ 
+                 if (nbttagcompound != null) {
+@@ -183,7 +200,7 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+ 
+                 flag = true;
+             } finally {
+-                this.b.remove(chunkcoordintpair, nbttagcompound); // CraftBukkit
++                this.b.remove(chunkcoordintpair, value); // CraftBukkit // Spigot
+             }
+ 
+             return flag;
+@@ -251,17 +268,17 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+         });
+     }
+ 
+-    private void saveBody(Chunk chunk, World world, NBTTagCompound nbttagcompound) {
++    private static void saveBody(NBTTagCompound nbttagcompound, Chunk chunk, long worldTime, boolean worldHasSkyLight) { // Spigot
+         nbttagcompound.setInt("xPos", chunk.locX);
+         nbttagcompound.setInt("zPos", chunk.locZ);
+-        nbttagcompound.setLong("LastUpdate", world.getTime());
++        nbttagcompound.setLong("LastUpdate", worldTime); // Spigot
+         nbttagcompound.setIntArray("HeightMap", chunk.r());
+         nbttagcompound.setBoolean("TerrainPopulated", chunk.isDone());
+         nbttagcompound.setBoolean("LightPopulated", chunk.v());
+         nbttagcompound.setLong("InhabitedTime", chunk.x());
+         ChunkSection[] achunksection = chunk.getSections();
+         NBTTagList nbttaglist = new NBTTagList();
+-        boolean flag = world.worldProvider.m();
++        boolean flag = worldHasSkyLight; // Spigot
+         ChunkSection[] achunksection1 = achunksection;
+         int i = achunksection.length;
+ 
+@@ -296,6 +313,15 @@ public class ChunkRegionLoader implements IChunkLoader, IAsyncChunkSaver {
+ 
+         nbttagcompound.set("Sections", nbttaglist);
+         nbttagcompound.setByteArray("Biomes", chunk.getBiomeIndex());
++
++        // Spigot start - End this method here and split off entity saving to another method
++    }
++
++    private static void saveEntities(NBTTagCompound nbttagcompound, Chunk chunk, World world) {
++        int i;
++        NBTTagCompound nbttagcompound1;
++        // Spigot end
++
+         chunk.g(false);
+         NBTTagList nbttaglist1 = new NBTTagList();
+ 
+diff --git a/src/main/java/net/minecraft/server/IChunkLoader.java b/src/main/java/net/minecraft/server/IChunkLoader.java
+index c541fbb11..f9b80ffc4 100644
+--- a/src/main/java/net/minecraft/server/IChunkLoader.java
++++ b/src/main/java/net/minecraft/server/IChunkLoader.java
+@@ -8,9 +8,9 @@ public interface IChunkLoader {
+     @Nullable
+     Chunk a(World world, int i, int j) throws IOException;
+ 
+-    void saveChunk(World world, Chunk chunk) throws IOException, ExceptionWorldConflict;
++    void saveChunk(World world, Chunk chunk, boolean unloaded) throws IOException, ExceptionWorldConflict; // Spigot
+ 
+-    void b(World world, Chunk chunk) throws IOException;
++    // void b(World world, Chunk chunk) throws IOException; // Spigot
+ 
+     void b();
+ 
+diff --git a/src/main/java/org/spigotmc/SupplierUtils.java b/src/main/java/org/spigotmc/SupplierUtils.java
+new file mode 100644
+index 000000000..f63ce98bf
+--- /dev/null
++++ b/src/main/java/org/spigotmc/SupplierUtils.java
+@@ -0,0 +1,69 @@
++package org.spigotmc;
++
++import java.util.function.Supplier;
++import javax.annotation.Nullable;
++
++/**
++ * Utilities for creating and working with {@code Supplier} instances.
++ */
++public class SupplierUtils {
++
++    /**
++     * Repeatedly supplies the first value from a given sequence; the value is
++     * obtained only when required.
++     */
++    public static class LazyHeadSupplier<V> implements Supplier<V> {
++
++        private @Nullable Supplier<V> completion;
++        private @Nullable V value;
++
++        public LazyHeadSupplier(Supplier<V> completion) {
++            this.completion = completion;
++        }
++
++        public synchronized @Nullable V get() {
++            if (this.completion != null) {
++                this.value = this.completion.get();
++                this.completion = null;
++            }
++
++            return this.value;
++        }
++    }
++
++    /**
++     * Repeatedly supplies the given value.
++     */
++    public static class ValueSupplier<V> implements Supplier<V> {
++
++        private final @Nullable V value;
++
++        public ValueSupplier(@Nullable V value) {
++            this.value = value;
++        }
++
++        public @Nullable V get() {
++            return this.value;
++        }
++    }
++
++    /**
++     * Creates a new {@code Supplier} that supplies the given {@code Supplier}'s
++     * first value.
++     *
++     * @param doLazily {@code false}, if {@code completion.get()} should be
++     * called immediately, or {@code true}, if {@code completion.get()} should
++     * be called only when the value is first needed.
++     */
++    public static <V> Supplier<V> createUnivaluedSupplier(Supplier<V> completion, boolean doLazily) {
++        return doLazily ? new LazyHeadSupplier<V>(completion) : new ValueSupplier<V>(completion.get());
++    }
++
++    /**
++     * Returns {@code supplier.get()}, if {@code supplier} is non-{@code null}
++     * (or {@code null}, otherwise).
++     */
++    public static @Nullable <V> V getIfExists(@Nullable Supplier<V> supplier) {
++        return supplier != null ? supplier.get() : null;
++    }
++}
+-- 
+2.14.1
+

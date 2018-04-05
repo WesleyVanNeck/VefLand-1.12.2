@@ -1,0 +1,40 @@
+From c2819c9c0d980084d86974f44c51f03fb8b313b3 Mon Sep 17 00:00:00 2001
+From: drXor <mcyoungsota@gmail.com>
+Date: Tue, 25 Feb 2014 15:15:26 -0400
+Subject: [PATCH] Cancellable WitherSkull potion effect
+
+
+diff --git a/src/main/java/net/minecraft/server/EntityWitherSkull.java b/src/main/java/net/minecraft/server/EntityWitherSkull.java
+index f564902c1..de9eb2d39 100644
+--- a/src/main/java/net/minecraft/server/EntityWitherSkull.java
++++ b/src/main/java/net/minecraft/server/EntityWitherSkull.java
+@@ -42,8 +42,11 @@ public class EntityWitherSkull extends EntityFireball {
+     protected void a(MovingObjectPosition movingobjectposition) {
+         if (!this.world.isClientSide) {
+             if (movingobjectposition.entity != null) {
++                // Spigot start
++                boolean didDamage = false;
+                 if (this.shooter != null) {
+-                    if (movingobjectposition.entity.damageEntity(DamageSource.projectile(this, shooter), 8.0F)) { // CraftBukkit
++                    didDamage = movingobjectposition.entity.damageEntity(DamageSource.projectile(this, shooter), 8.0F);
++                    if (didDamage) { // CraftBukkit
+                         if (movingobjectposition.entity.isAlive()) {
+                             this.a(this.shooter, movingobjectposition.entity);
+                         } else {
+@@ -51,10 +54,11 @@ public class EntityWitherSkull extends EntityFireball {
+                         }
+                     }
+                 } else {
+-                    movingobjectposition.entity.damageEntity(DamageSource.MAGIC, 5.0F);
++                    didDamage = movingobjectposition.entity.damageEntity(DamageSource.MAGIC, 5.0F);
+                 }
+ 
+-                if (movingobjectposition.entity instanceof EntityLiving) {
++                if (didDamage && movingobjectposition.entity instanceof EntityLiving) {
++                // Spigot end
+                     byte b0 = 0;
+ 
+                     if (this.world.getDifficulty() == EnumDifficulty.NORMAL) {
+-- 
+2.14.1
+

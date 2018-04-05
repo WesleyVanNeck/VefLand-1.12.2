@@ -1,0 +1,30 @@
+From a2c805edc8ac1a177e50ce7023bd8461c9926f95 Mon Sep 17 00:00:00 2001
+From: Andrew Krieger <Slizyboy@hotmail.com>
+Date: Tue, 24 Dec 2013 07:55:23 -0800
+Subject: [PATCH] Cross World Entity Teleportation
+
+Use Entity.teleportTo for cross-world teleportation in CraftEntity.
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+index 5719351f2..c1b447963 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftEntity.java
+@@ -282,7 +282,14 @@ public abstract class CraftEntity implements org.bukkit.entity.Entity {
+         // If this entity is riding another entity, we must dismount before teleporting.
+         entity.stopRiding();
+ 
+-        entity.world = ((CraftWorld) location.getWorld()).getHandle();
++        // Spigot start
++        if (!location.getWorld().equals(getWorld())) {
++          entity.teleportTo(location, cause.equals(TeleportCause.NETHER_PORTAL));
++          return true;
++        }
++
++        // entity.world = ((CraftWorld) location.getWorld()).getHandle();
++        // Spigot end
+         // entity.setLocation() throws no event, and so cannot be cancelled
+         entity.setLocation(location.getX(), location.getY(), location.getZ(), location.getYaw(), location.getPitch());
+         // SPIGOT-619: Force sync head rotation also
+-- 
+2.14.1
+

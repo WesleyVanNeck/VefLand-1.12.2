@@ -1,0 +1,54 @@
+From 8340aede846b948f92f59b6ec2897ed1a4547c21 Mon Sep 17 00:00:00 2001
+From: md_5 <git@md-5.net>
+Date: Fri, 9 Jun 2017 16:29:31 +1000
+Subject: [PATCH] Configurable Advancement Disabling
+
+Allow disabling any (or all) inbuilt advancements with a configuration option.
+
+diff --git a/src/main/java/net/minecraft/server/AdvancementDataPlayer.java b/src/main/java/net/minecraft/server/AdvancementDataPlayer.java
+index 495e7f88e..6896b7095 100644
+--- a/src/main/java/net/minecraft/server/AdvancementDataPlayer.java
++++ b/src/main/java/net/minecraft/server/AdvancementDataPlayer.java
+@@ -165,6 +165,7 @@ public class AdvancementDataPlayer {
+     }
+ 
+     public void c() {
++        if (org.spigotmc.SpigotConfig.disableAdvancementSaving) return;
+         HashMap hashmap = Maps.newHashMap();
+         Iterator iterator = this.data.entrySet().iterator();
+ 
+diff --git a/src/main/java/net/minecraft/server/AdvancementDataWorld.java b/src/main/java/net/minecraft/server/AdvancementDataWorld.java
+index 5ae0609d8..db2a1d872 100644
+--- a/src/main/java/net/minecraft/server/AdvancementDataWorld.java
++++ b/src/main/java/net/minecraft/server/AdvancementDataWorld.java
+@@ -153,6 +153,11 @@ public class AdvancementDataWorld {
+                         java.nio.file.Path java_nio_file_path2 = java_nio_file_path.relativize(java_nio_file_path1);
+                         String s = FilenameUtils.removeExtension(java_nio_file_path2.toString()).replaceAll("\\\\", "/");
+                         MinecraftKey minecraftkey = new MinecraftKey("minecraft", s);
++                        // Spigot start
++                        if (org.spigotmc.SpigotConfig.disabledAdvancements != null && (org.spigotmc.SpigotConfig.disabledAdvancements.contains("*") || org.spigotmc.SpigotConfig.disabledAdvancements.contains(minecraftkey.toString()))) {
++                            continue;
++                        }
++                        // Spigot end
+ 
+                         if (!map.containsKey(minecraftkey)) {
+                             BufferedReader bufferedreader = null;
+diff --git a/src/main/java/org/spigotmc/SpigotConfig.java b/src/main/java/org/spigotmc/SpigotConfig.java
+index 4b21fa599..1b5158c0d 100644
+--- a/src/main/java/org/spigotmc/SpigotConfig.java
++++ b/src/main/java/org/spigotmc/SpigotConfig.java
+@@ -392,4 +392,11 @@ public class SpigotConfig
+     private static void itemDirtyTicks() {
+         itemDirtyTicks = getInt("settings.item-dirty-ticks", 20);
+     }
++
++    public static boolean disableAdvancementSaving;
++    public static List<String> disabledAdvancements;
++    private static void disabledAdvancements() {
++        disableAdvancementSaving = getBoolean("advancements.disable-saving", false);
++        disabledAdvancements = getList("advancements.disabled", Arrays.asList(new String[]{"minecraft:story/disabled"}));
++    }
+ }
+-- 
+2.14.1
+

@@ -1,0 +1,165 @@
+From 0cc69c85ff790f89a5ba6d0cf5d2b6056ff8e29b Mon Sep 17 00:00:00 2001
+From: md_5 <git@md-5.net>
+Date: Thu, 26 Jan 2017 21:50:51 +0000
+Subject: [PATCH] Highly Optimized Tick Loop
+
+
+diff --git a/src/main/java/net/minecraft/server/MinecraftServer.java b/src/main/java/net/minecraft/server/MinecraftServer.java
+index d84cb5a1b..62975fdd1 100644
+--- a/src/main/java/net/minecraft/server/MinecraftServer.java
++++ b/src/main/java/net/minecraft/server/MinecraftServer.java
+@@ -118,6 +118,12 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
+     public java.util.Queue<Runnable> processQueue = new java.util.concurrent.ConcurrentLinkedQueue<Runnable>();
+     public int autosavePeriod;
+     // CraftBukkit end
++    // Spigot start
++    public static final int TPS = 20;
++    public static final int TICK_TIME = 1000000000 / TPS;
++    private static final int SAMPLE_INTERVAL = 100;
++    public final double[] recentTps = new double[ 3 ];
++    // Spigot end
+ 
+     public MinecraftServer(OptionSet options, Proxy proxy, DataConverterManager dataconvertermanager, YggdrasilAuthenticationService yggdrasilauthenticationservice, MinecraftSessionService minecraftsessionservice, GameProfileRepository gameprofilerepository, UserCache usercache) {
+         this.e = proxy;
+@@ -518,6 +524,13 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
+         this.isRunning = false;
+     }
+ 
++    // Spigot Start
++    private static double calcTps(double avg, double exp, double tps)
++    {
++        return ( avg * exp ) + ( tps * ( 1 - exp ) );
++    }
++    // Spigot End
++
+     public void run() {
+         try {
+             if (this.init()) {
+@@ -528,38 +541,34 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
+                 this.q.setServerInfo(new ServerPing.ServerData("1.12.2", 340));
+                 this.a(this.q);
+ 
++                // Spigot start
++                Arrays.fill( recentTps, 20 );
++                long lastTick = System.nanoTime(), catchupTime = 0, curTime, wait, tickSection = lastTick;
+                 while (this.isRunning) {
+-                    long j = aw();
+-                    long k = j - this.ab;
+-
+-                    if (k > 2000L && this.ab - this.R >= 15000L) {
+-                        if (server.getWarnOnOverload()) // CraftBukkit
+-                        MinecraftServer.LOGGER.warn("Can\'t keep up! Did the system time change, or is the server overloaded? Running {}ms behind, skipping {} tick(s)", Long.valueOf(k), Long.valueOf(k / 50L));
+-                        k = 2000L;
+-                        this.R = this.ab;
+-                    }
+-
+-                    if (k < 0L) {
+-                        MinecraftServer.LOGGER.warn("Time ran backwards! Did the system time change?");
+-                        k = 0L;
++                    curTime = System.nanoTime();
++                    wait = TICK_TIME - (curTime - lastTick) - catchupTime;
++                    if (wait > 0) {
++                        Thread.sleep(wait / 1000000);
++                        catchupTime = 0;
++                        continue;
++                    } else {
++                        catchupTime = Math.min(1000000000, Math.abs(wait));
+                     }
+ 
+-                    i += k;
+-                    this.ab = j;
+-                    if (this.worlds.get(0).everyoneDeeplySleeping()) { // CraftBukkit
+-                        this.C();
+-                        i = 0L;
+-                    } else {
+-                        while (i > 50L) {
+-                            MinecraftServer.currentTick = (int) (System.currentTimeMillis() / 50); // CraftBukkit
+-                            i -= 50L;
+-                            this.C();
+-                        }
++                    if ( MinecraftServer.currentTick++ % SAMPLE_INTERVAL == 0 )
++                    {
++                        double currentTps = 1E9 / ( curTime - tickSection ) * SAMPLE_INTERVAL;
++                        recentTps[0] = calcTps( recentTps[0], 0.92, currentTps ); // 1/exp(5sec/1min)
++                        recentTps[1] = calcTps( recentTps[1], 0.9835, currentTps ); // 1/exp(5sec/5min)
++                        recentTps[2] = calcTps( recentTps[2], 0.9945, currentTps ); // 1/exp(5sec/15min)
++                        tickSection = curTime;
+                     }
++                    lastTick = curTime;
+ 
+-                    Thread.sleep(Math.max(1L, 50L - i));
++                    this.C();
+                     this.Q = true;
+                 }
++                // Spigot end
+             } else {
+                 this.a((CrashReport) null);
+             }
+diff --git a/src/main/java/org/spigotmc/SpigotConfig.java b/src/main/java/org/spigotmc/SpigotConfig.java
+index 2555cc582..b4c85ba20 100644
+--- a/src/main/java/org/spigotmc/SpigotConfig.java
++++ b/src/main/java/org/spigotmc/SpigotConfig.java
+@@ -262,4 +262,9 @@ public class SpigotConfig
+             }
+         }
+     }
++
++    private static void tpsCommand()
++    {
++        commands.put( "tps", new TicksPerSecondCommand( "tps" ) );
++    }
+ }
+diff --git a/src/main/java/org/spigotmc/TicksPerSecondCommand.java b/src/main/java/org/spigotmc/TicksPerSecondCommand.java
+new file mode 100644
+index 000000000..be2e31dea
+--- /dev/null
++++ b/src/main/java/org/spigotmc/TicksPerSecondCommand.java
+@@ -0,0 +1,45 @@
++package org.spigotmc;
++
++import com.google.common.base.Joiner;
++import net.minecraft.server.MinecraftServer;
++import com.google.common.collect.Iterables;
++import org.bukkit.ChatColor;
++import org.bukkit.command.Command;
++import org.bukkit.command.CommandSender;
++
++public class TicksPerSecondCommand extends Command
++{
++
++    public TicksPerSecondCommand(String name)
++    {
++        super( name );
++        this.description = "Gets the current ticks per second for the server";
++        this.usageMessage = "/tps";
++        this.setPermission( "bukkit.command.tps" );
++    }
++
++    @Override
++    public boolean execute(CommandSender sender, String currentAlias, String[] args)
++    {
++        if ( !testPermission( sender ) )
++        {
++            return true;
++        }
++
++        StringBuilder sb = new StringBuilder( ChatColor.GOLD + "TPS from last 1m, 5m, 15m: " );
++        for ( double tps : MinecraftServer.getServer().recentTps )
++        {
++            sb.append( format( tps ) );
++            sb.append( ", " );
++        }
++        sender.sendMessage( sb.substring( 0, sb.length() - 2 ) );
++
++        return true;
++    }
++
++    private String format(double tps)
++    {
++        return ( ( tps > 18.0 ) ? ChatColor.GREEN : ( tps > 16.0 ) ? ChatColor.YELLOW : ChatColor.RED ).toString()
++                + ( ( tps > 20.0 ) ? "*" : "" ) + Math.min( Math.round( tps * 100.0 ) / 100.0, 20.0 );
++    }
++}
+-- 
+2.14.1
+

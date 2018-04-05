@@ -1,0 +1,44 @@
+From 6a3ffd241cfee2e7fd3119a06cd87c9df16d7335 Mon Sep 17 00:00:00 2001
+From: drXor <mcyoungsota@gmail.com>
+Date: Sat, 15 Mar 2014 01:30:05 -0400
+Subject: [PATCH] Descriptive kick reasons instead of Nope!
+
+
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index 1c3e85020..b944be5c5 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -279,7 +279,7 @@ public abstract class Entity implements ICommandListener {
+         if (f == Float.POSITIVE_INFINITY || f == Float.NEGATIVE_INFINITY) {
+             if (this instanceof EntityPlayer) {
+                 this.world.getServer().getLogger().warning(this.getName() + " was caught trying to crash the server with an invalid yaw");
+-                ((CraftPlayer) this.getBukkitEntity()).kickPlayer("Nope");
++                ((CraftPlayer) this.getBukkitEntity()).kickPlayer("Infinite yaw (Hacking?)"); //Spigot "Nope" -> Descriptive reason
+             }
+             f = 0;
+         }
+@@ -292,7 +292,7 @@ public abstract class Entity implements ICommandListener {
+         if (f1 == Float.POSITIVE_INFINITY || f1 == Float.NEGATIVE_INFINITY) {
+             if (this instanceof EntityPlayer) {
+                 this.world.getServer().getLogger().warning(this.getName() + " was caught trying to crash the server with an invalid pitch");
+-                ((CraftPlayer) this.getBukkitEntity()).kickPlayer("Nope");
++                ((CraftPlayer) this.getBukkitEntity()).kickPlayer("Infinite pitch (Hacking?)"); //Spigot "Nope" -> Descriptive reason
+             }
+             f1 = 0;
+         }
+diff --git a/src/main/java/net/minecraft/server/PlayerConnection.java b/src/main/java/net/minecraft/server/PlayerConnection.java
+index 8e57ab27e..1ed0c1671 100644
+--- a/src/main/java/net/minecraft/server/PlayerConnection.java
++++ b/src/main/java/net/minecraft/server/PlayerConnection.java
+@@ -1148,7 +1148,7 @@ public class PlayerConnection implements PacketListenerPlayIn, ITickable {
+             this.player.resetIdleTimer();
+         } else {
+             PlayerConnection.LOGGER.warn("{} tried to set an invalid carried item", this.player.getName());
+-            this.disconnect("Nope!"); // CraftBukkit
++            this.disconnect("Invalid hotbar selection (Hacking?)"); // CraftBukkit //Spigot "Nope" -> Descriptive reason
+         }
+     }
+ 
+-- 
+2.14.1
+

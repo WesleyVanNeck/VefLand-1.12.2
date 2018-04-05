@@ -1,0 +1,125 @@
+From bc3d00a86c29db7e02ef06970c77efe0423d70c4 Mon Sep 17 00:00:00 2001
+From: Antony Riley <antony@cyberiantiger.org>
+Date: Sun, 26 Apr 2015 02:14:13 +0300
+Subject: [PATCH] map decoration fix
+
+
+diff --git a/src/main/java/net/minecraft/server/EntityItemFrame.java b/src/main/java/net/minecraft/server/EntityItemFrame.java
+index fe21aba93..8b806c303 100644
+--- a/src/main/java/net/minecraft/server/EntityItemFrame.java
++++ b/src/main/java/net/minecraft/server/EntityItemFrame.java
+@@ -1,5 +1,9 @@
+ package net.minecraft.server;
+ 
++// Spigot start
++import java.util.UUID;
++import org.apache.commons.codec.Charsets;
++// Spigot end
+ import javax.annotation.Nullable;
+ 
+ public class EntityItemFrame extends EntityHanging {
+@@ -95,7 +99,7 @@ public class EntityItemFrame extends EntityHanging {
+             if (itemstack.getItem() == Items.FILLED_MAP) {
+                 WorldMap worldmap = ((ItemWorldMap) itemstack.getItem()).getSavedMap(itemstack, this.world);
+ 
+-                worldmap.decorations.remove("frame-" + this.getId());
++                worldmap.decorations.remove(UUID.nameUUIDFromBytes(("frame-" + this.getId()).getBytes(Charsets.US_ASCII))); // Spigot
+             }
+ 
+             itemstack.a((EntityItemFrame) null);
+diff --git a/src/main/java/net/minecraft/server/WorldMap.java b/src/main/java/net/minecraft/server/WorldMap.java
+index 140286acb..1096b5c1f 100644
+--- a/src/main/java/net/minecraft/server/WorldMap.java
++++ b/src/main/java/net/minecraft/server/WorldMap.java
+@@ -1,5 +1,6 @@
+ package net.minecraft.server;
+ 
++import com.google.common.base.Charsets;
+ import com.google.common.collect.Lists;
+ import com.google.common.collect.Maps;
+ import java.util.Iterator;
+@@ -26,7 +27,7 @@ public class WorldMap extends PersistentBase {
+     public byte[] colors = new byte[16384];
+     public List<WorldMap.WorldMapHumanTracker> i = Lists.newArrayList();
+     public final Map<EntityHuman, WorldMap.WorldMapHumanTracker> k = Maps.newHashMap(); // Spigot private -> public
+-    public Map<String, MapIcon> decorations = Maps.newLinkedHashMap();
++    public Map<UUID, MapIcon> decorations = Maps.newLinkedHashMap(); // Spigot
+ 
+     // CraftBukkit start
+     public final CraftMapView mapView;
+@@ -157,7 +158,7 @@ public class WorldMap extends PersistentBase {
+         }
+ 
+         if (!entityhuman.inventory.h(itemstack)) {
+-            this.decorations.remove(entityhuman.getName());
++            this.decorations.remove(entityhuman.getUniqueID()); // Spigot
+         }
+ 
+         for (int i = 0; i < this.i.size(); ++i) {
+@@ -165,7 +166,7 @@ public class WorldMap extends PersistentBase {
+ 
+             if (!worldmap_worldmaphumantracker1.trackee.dead && (worldmap_worldmaphumantracker1.trackee.inventory.h(itemstack) || itemstack.z())) {
+                 if (!itemstack.z() && worldmap_worldmaphumantracker1.trackee.dimension == this.map && this.track) {
+-                    this.a(MapIcon.Type.PLAYER, worldmap_worldmaphumantracker1.trackee.world, worldmap_worldmaphumantracker1.trackee.getName(), worldmap_worldmaphumantracker1.trackee.locX, worldmap_worldmaphumantracker1.trackee.locZ, (double) worldmap_worldmaphumantracker1.trackee.yaw);
++                    this.a(MapIcon.Type.PLAYER, worldmap_worldmaphumantracker1.trackee.world, worldmap_worldmaphumantracker1.trackee.getUniqueID(), worldmap_worldmaphumantracker1.trackee.locX, worldmap_worldmaphumantracker1.trackee.locZ, (double) worldmap_worldmaphumantracker1.trackee.yaw); // Spigot
+                 }
+             } else {
+                 this.k.remove(worldmap_worldmaphumantracker1.trackee);
+@@ -177,7 +178,7 @@ public class WorldMap extends PersistentBase {
+             EntityItemFrame entityitemframe = itemstack.A();
+             BlockPosition blockposition = entityitemframe.getBlockPosition();
+ 
+-            this.a(MapIcon.Type.FRAME, entityhuman.world, "frame-" + entityitemframe.getId(), (double) blockposition.getX(), (double) blockposition.getZ(), (double) (entityitemframe.direction.get2DRotationValue() * 90));
++            this.a(MapIcon.Type.FRAME, entityhuman.world, UUID.nameUUIDFromBytes(("frame-" + entityitemframe.getId()).getBytes(Charsets.US_ASCII)), (double) blockposition.getX(), (double) blockposition.getZ(), (double) (entityitemframe.direction.get2DRotationValue() * 90)); // Spigot
+         }
+ 
+         if (itemstack.hasTag() && itemstack.getTag().hasKeyOfType("Decorations", 9)) {
+@@ -186,8 +187,11 @@ public class WorldMap extends PersistentBase {
+             for (int j = 0; j < nbttaglist.size(); ++j) {
+                 NBTTagCompound nbttagcompound = nbttaglist.get(j);
+ 
+-                if (!this.decorations.containsKey(nbttagcompound.getString("id"))) {
+-                    this.a(MapIcon.Type.a(nbttagcompound.getByte("type")), entityhuman.world, nbttagcompound.getString("id"), nbttagcompound.getDouble("x"), nbttagcompound.getDouble("z"), nbttagcompound.getDouble("rot"));
++                // Spigot - start
++                UUID uuid = UUID.nameUUIDFromBytes(nbttagcompound.getString("id").getBytes(Charsets.US_ASCII));
++                if (!this.decorations.containsKey(uuid)) {
++                    this.a(MapIcon.Type.a(nbttagcompound.getByte("type")), entityhuman.world, uuid, nbttagcompound.getDouble("x"), nbttagcompound.getDouble("z"), nbttagcompound.getDouble("rot"));
++                    // Spigot - end
+                 }
+             }
+         }
+@@ -220,7 +224,7 @@ public class WorldMap extends PersistentBase {
+ 
+     }
+ 
+-    private void a(MapIcon.Type mapicon_type, World world, String s, double d0, double d1, double d2) {
++    private void a(MapIcon.Type mapicon_type, World world, UUID s, double d0, double d1, double d2) { // Spigot; string->uuid
+         int i = 1 << this.scale;
+         float f = (float) (d0 - (double) this.centerX) / (float) i;
+         float f1 = (float) (d1 - (double) this.centerZ) / (float) i;
+diff --git a/src/main/java/org/bukkit/craftbukkit/map/CraftMapRenderer.java b/src/main/java/org/bukkit/craftbukkit/map/CraftMapRenderer.java
+index a55915a4f..8816d33ca 100644
+--- a/src/main/java/org/bukkit/craftbukkit/map/CraftMapRenderer.java
++++ b/src/main/java/org/bukkit/craftbukkit/map/CraftMapRenderer.java
+@@ -1,5 +1,6 @@
+ package org.bukkit.craftbukkit.map;
+ 
++import java.util.UUID;
+ import net.minecraft.server.WorldMap;
+ import net.minecraft.server.MapIcon;
+ 
+@@ -34,9 +35,9 @@ public class CraftMapRenderer extends MapRenderer {
+             cursors.removeCursor(cursors.getCursor(0));
+         }
+ 
+-        for (Object key : worldMap.decorations.keySet()) {
++        for (UUID key : worldMap.decorations.keySet()) { // Spigot string -> uuid.
+             // If this cursor is for a player check visibility with vanish system
+-            Player other = Bukkit.getPlayerExact((String) key);
++            Player other = Bukkit.getPlayer(key); // Spigot
+             if (other != null && !player.canSee(other)) {
+                 continue;
+             }
+-- 
+2.14.1
+

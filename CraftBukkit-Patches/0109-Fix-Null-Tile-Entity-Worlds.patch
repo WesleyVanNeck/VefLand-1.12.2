@@ -1,0 +1,21 @@
+From 06c2b9595b87bd54fc0c9a7c16c68045b006bdec Mon Sep 17 00:00:00 2001
+From: "Evan A. Haskell" <eah2119@gmail.com>
+Date: Thu, 26 Jun 2014 18:37:29 -0400
+Subject: [PATCH] Fix Null Tile Entity Worlds
+
+
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index ba061bd55..83d49a296 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -1956,6 +1956,7 @@ public abstract class World implements IBlockAccess {
+                         }
+                     }
+ 
++                    tileentity.a(this); // Spigot - No null worlds
+                     this.b.add(tileentity);
+                 } else {
+                     this.getChunkAtWorldCoords(blockposition).a(blockposition, tileentity);
+-- 
+2.14.1
+

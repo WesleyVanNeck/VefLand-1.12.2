@@ -1,0 +1,98 @@
+From 052a198760aac68a20e877defbe8db2f8c4d536b Mon Sep 17 00:00:00 2001
+From: md_5 <md_5@live.com.au>
+Date: Sat, 23 Mar 2013 09:46:33 +1100
+Subject: [PATCH] Merge tweaks and configuration
+
+This allows the merging of Experience orbs, as well as the configuration of the merge radius of items. Additionally it refactors the merge algorithm to be a better experience for players.
+
+diff --git a/src/main/java/net/minecraft/server/EntityItem.java b/src/main/java/net/minecraft/server/EntityItem.java
+index bcba79e6e..566b3cbee 100644
+--- a/src/main/java/net/minecraft/server/EntityItem.java
++++ b/src/main/java/net/minecraft/server/EntityItem.java
+@@ -144,7 +144,10 @@ public class EntityItem extends Entity {
+     }
+ 
+     private void x() {
+-        Iterator iterator = this.world.a(EntityItem.class, this.getBoundingBox().grow(0.5D, 0.0D, 0.5D)).iterator();
++        // Spigot start
++        double radius = world.spigotConfig.itemMerge;
++        Iterator iterator = this.world.a(EntityItem.class, this.getBoundingBox().grow(radius, radius, radius)).iterator();
++        // Spigot end
+ 
+         while (iterator.hasNext()) {
+             EntityItem entityitem = (EntityItem) iterator.next();
+@@ -178,12 +181,14 @@ public class EntityItem extends Entity {
+                     } else if (itemstack1.getCount() + itemstack.getCount() > itemstack1.getMaxStackSize()) {
+                         return false;
+                     } else {
+-                        if (org.bukkit.craftbukkit.event.CraftEventFactory.callItemMergeEvent(this, entityitem).isCancelled()) return false; // CraftBukkit
+-                        itemstack1.add(itemstack.getCount());
+-                        entityitem.pickupDelay = Math.max(entityitem.pickupDelay, this.pickupDelay);
+-                        entityitem.age = Math.min(entityitem.age, this.age);
+-                        entityitem.setItemStack(itemstack1);
+-                        this.die();
++                        // Spigot start
++                        if (org.bukkit.craftbukkit.event.CraftEventFactory.callItemMergeEvent(entityitem, this).isCancelled()) return false; // CraftBukkit
++                        itemstack.add(itemstack1.getCount());
++                        this.pickupDelay = Math.max(entityitem.pickupDelay, this.pickupDelay);
++                        this.age = Math.min(entityitem.age, this.age);
++                        this.setItemStack(itemstack);
++                        entityitem.die();
++                        // Spigot end
+                         return true;
+                     }
+                 } else {
+diff --git a/src/main/java/net/minecraft/server/World.java b/src/main/java/net/minecraft/server/World.java
+index 33e77250c..9bb08fa8c 100644
+--- a/src/main/java/net/minecraft/server/World.java
++++ b/src/main/java/net/minecraft/server/World.java
+@@ -997,6 +997,23 @@ public abstract class World implements IBlockAccess {
+         } else if (entity.getBukkitEntity() instanceof org.bukkit.entity.Vehicle){
+             event = CraftEventFactory.callVehicleCreateEvent(entity);
+         }
++        // Spigot start
++        else if (entity instanceof EntityExperienceOrb) {
++            EntityExperienceOrb xp = (EntityExperienceOrb) entity;
++            double radius = spigotConfig.expMerge;
++            if (radius > 0) {
++                List<Entity> entities = this.getEntities(entity, entity.getBoundingBox().grow(radius, radius, radius));
++                for (Entity e : entities) {
++                    if (e instanceof EntityExperienceOrb) {
++                        EntityExperienceOrb loopItem = (EntityExperienceOrb) e;
++                        if (!loopItem.dead) {
++                            xp.value += loopItem.value;
++                            loopItem.die();
++                        }
++                    }
++                }
++            }
++        } // Spigot end
+ 
+         if (event != null && (event.isCancelled() || entity.dead)) {
+             entity.dead = true;
+diff --git a/src/main/java/org/spigotmc/SpigotWorldConfig.java b/src/main/java/org/spigotmc/SpigotWorldConfig.java
+index c62fa4569..23730154d 100644
+--- a/src/main/java/org/spigotmc/SpigotWorldConfig.java
++++ b/src/main/java/org/spigotmc/SpigotWorldConfig.java
+@@ -105,4 +105,18 @@ public class SpigotWorldConfig
+         vineModifier = getAndValidateGrowth( "Vine" );
+         cocoaModifier = getAndValidateGrowth( "Cocoa" );
+     }
++
++    public double itemMerge;
++    private void itemMerge()
++    {
++        itemMerge = getDouble("merge-radius.item", 2.5 );
++        log( "Item Merge Radius: " + itemMerge );
++    }
++
++    public double expMerge;
++    private void expMerge()
++    {
++        expMerge = getDouble("merge-radius.exp", 3.0 );
++        log( "Experience Merge Radius: " + expMerge );
++    }
+ }
+-- 
+2.14.1
+

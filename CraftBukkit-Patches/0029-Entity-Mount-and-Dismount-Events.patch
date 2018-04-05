@@ -1,0 +1,35 @@
+From 3db8a8986c9546ea6f1215ea7f37a6bbb56ef23a Mon Sep 17 00:00:00 2001
+From: md_5 <git@md-5.net>
+Date: Sat, 27 Feb 2016 10:07:58 +1100
+Subject: [PATCH] Entity Mount and Dismount Events
+
+
+diff --git a/src/main/java/net/minecraft/server/Entity.java b/src/main/java/net/minecraft/server/Entity.java
+index 33c9d696b..30d4b1557 100644
+--- a/src/main/java/net/minecraft/server/Entity.java
++++ b/src/main/java/net/minecraft/server/Entity.java
+@@ -1901,6 +1901,13 @@ public abstract class Entity implements ICommandListener {
+                 }
+             }
+             // CraftBukkit end
++            // Spigot start
++            org.spigotmc.event.entity.EntityMountEvent event = new org.spigotmc.event.entity.EntityMountEvent(entity.getBukkitEntity(), this.getBukkitEntity());
++            Bukkit.getPluginManager().callEvent(event);
++            if (event.isCancelled()) {
++                return;
++            }
++            // Spigot end
+             if (!this.world.isClientSide && entity instanceof EntityHuman && !(this.bE() instanceof EntityHuman)) {
+                 this.passengers.add(0, entity);
+             } else {
+@@ -1930,6 +1937,7 @@ public abstract class Entity implements ICommandListener {
+                 }
+             }
+             // CraftBukkit end
++            Bukkit.getPluginManager().callEvent( new org.spigotmc.event.entity.EntityDismountEvent(entity.getBukkitEntity(), this.getBukkitEntity())); // Spigot
+             this.passengers.remove(entity);
+             entity.j = 60;
+         }
+-- 
+2.14.1
+

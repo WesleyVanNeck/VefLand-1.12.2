@@ -1,0 +1,178 @@
+From e303c30673ee8d8263ddeee855054b3425e6406d Mon Sep 17 00:00:00 2001
+From: md_5 <md_5@live.com.au>
+Date: Fri, 21 Jun 2013 17:29:54 +1000
+Subject: [PATCH] Fix Mob Spawning Relative to View Distance
+
+Changes the mob spawning algorithm to properly account for view distance and the range around players.
+
+Needs better documentation.
+
+diff --git a/src/main/java/net/minecraft/server/Chunk.java b/src/main/java/net/minecraft/server/Chunk.java
+index 779f5714a..04183588b 100644
+--- a/src/main/java/net/minecraft/server/Chunk.java
++++ b/src/main/java/net/minecraft/server/Chunk.java
+@@ -44,6 +44,7 @@ public class Chunk {
+     private int x;
+     private final ConcurrentLinkedQueue<BlockPosition> y;
+     public boolean d;
++    protected gnu.trove.map.hash.TObjectIntHashMap<Class> entityCount = new gnu.trove.map.hash.TObjectIntHashMap<Class>(); // Spigot
+ 
+     // CraftBukkit start - Neighbor loaded cache for chunk lighting and entity ticking
+     private int neighbors = 0x1 << 12;
+@@ -608,6 +609,22 @@ public class Chunk {
+         entity.ac = k;
+         entity.ad = this.locZ;
+         this.entitySlices[k].add(entity);
++        // Spigot start - increment creature type count
++        // Keep this synced up with World.a(Class)
++        if (entity instanceof EntityInsentient) {
++            EntityInsentient entityinsentient = (EntityInsentient) entity;
++            if (entityinsentient.isTypeNotPersistent() && entityinsentient.isPersistent()) {
++                return;
++            }
++        }
++        for ( EnumCreatureType creatureType : EnumCreatureType.values() )
++        {
++            if ( creatureType.a().isAssignableFrom( entity.getClass() ) )
++            {
++                this.entityCount.adjustOrPutValue( creatureType.a(), 1, 1 );
++            }
++        }
++        // Spigot end
+     }
+ 
+     public void b(Entity entity) {
+@@ -624,6 +641,22 @@ public class Chunk {
+         }
+ 
+         this.entitySlices[i].remove(entity);
++        // Spigot start - decrement creature type count
++        // Keep this synced up with World.a(Class)
++        if (entity instanceof EntityInsentient) {
++            EntityInsentient entityinsentient = (EntityInsentient) entity;
++            if (entityinsentient.isTypeNotPersistent() && entityinsentient.isPersistent()) {
++                return;
++            }
++        }
++        for ( EnumCreatureType creatureType : EnumCreatureType.values() )
++        {
++            if ( creatureType.a().isAssignableFrom( entity.getClass() ) )
++            {
++                this.entityCount.adjustValue( creatureType.a(), -1 );
++            }
++        }
++        // Spigot end
+     }
+ 
+     public boolean c(BlockPosition blockposition) {
+diff --git a/src/main/java/net/minecraft/server/SpawnerCreature.java b/src/main/java/net/minecraft/server/SpawnerCreature.java
+index cec211ab4..a599a043d 100644
+--- a/src/main/java/net/minecraft/server/SpawnerCreature.java
++++ b/src/main/java/net/minecraft/server/SpawnerCreature.java
+@@ -19,6 +19,25 @@ public final class SpawnerCreature {
+ 
+     public SpawnerCreature() {}
+ 
++    // Spigot start - get entity count only from chunks being processed in b
++    private int getEntityCount(WorldServer server, Class oClass)
++    {
++        int i = 0;
++        Iterator<Long> it = this.b.iterator();
++        while ( it.hasNext() )
++        {
++            Long coord = it.next();
++            int x = LongHash.msw( coord );
++            int z = LongHash.lsw( coord );
++            if ( !((ChunkProviderServer)server.chunkProvider).unloadQueue.contains( coord ) && server.isChunkLoaded( x, z, true ) )
++            {
++                i += server.getChunkAt( x, z ).entityCount.get( oClass );
++            }
++        }
++        return i;
++    }
++    // Spigot end
++
+     public int a(WorldServer worldserver, boolean flag, boolean flag1, boolean flag2) {
+         if (!flag && !flag1) {
+             return 0;
+@@ -38,10 +57,15 @@ public final class SpawnerCreature {
+ 
+                     j = MathHelper.floor(entityhuman.locZ / 16.0D);
+                     boolean flag3 = true;
+-
+-                    for (int i1 = -8; i1 <= 8; ++i1) {
+-                        for (k = -8; k <= 8; ++k) {
+-                            boolean flag4 = i1 == -8 || i1 == 8 || k == -8 || k == 8;
++                    // Spigot Start
++                    byte b0 = worldserver.spigotConfig.mobSpawnRange;
++                    b0 = ( b0 > worldserver.spigotConfig.viewDistance ) ? (byte) worldserver.spigotConfig.viewDistance : b0;
++                    b0 = ( b0 > 8 ) ? 8 : b0;
++
++                    for (int i1 = -b0; i1 <= b0; ++i1) {
++                        for (k = -b0; k <= b0; ++k) {
++                            boolean flag4 = i1 == -b0 || i1 == b0 || k == -b0 || k == b0;
++                            // Spigot End
+                             ChunkCoordIntPair chunkcoordintpair = new ChunkCoordIntPair(i1 + l, k + j);
+ 
+                             // CraftBukkit start - use LongHash and LongHashSet
+@@ -91,18 +115,20 @@ public final class SpawnerCreature {
+                 if (limit == 0) {
+                     continue;
+                 }
++				int mobcnt = 0; // Spigot
+                 // CraftBukkit end
+ 
+                 if ((!enumcreaturetype.d() || flag1) && (enumcreaturetype.d() || flag) && (!enumcreaturetype.e() || flag2)) {
+                     k = worldserver.a(enumcreaturetype.a());
+                     int l1 = limit * i / a; // CraftBukkit - use per-world limits
+ 
+-                    if (k <= l1) {
++                    if ((mobcnt = getEntityCount(worldserver, enumcreaturetype.a())) <= limit * i / 256) {
+                         BlockPosition.MutableBlockPosition blockposition_mutableblockposition = new BlockPosition.MutableBlockPosition();
+                         Iterator iterator1 = this.b.iterator();
+ 
++                        int moblimit = (limit * i / 256) - mobcnt + 1; // Spigot - up to 1 more than limit
+                         label120:
+-                        while (iterator1.hasNext()) {
++                        while (iterator1.hasNext() && (moblimit > 0)) { // Spigot - while more allowed
+                             // CraftBukkit start = use LongHash and LongObjectHashMap
+                             long key = ((Long) iterator1.next()).longValue();
+                             BlockPosition blockposition1 = getRandomPosition(worldserver, LongHash.msw(key), LongHash.lsw(key));
+@@ -161,13 +187,17 @@ public final class SpawnerCreature {
+                                                                 // CraftBukkit start
+                                                                 if (worldserver.addEntity(entityinsentient, SpawnReason.NATURAL)) {
+                                                                     ++l2;
++                                                                    moblimit--; // Spigot
+                                                                 }
+                                                                 // CraftBukkit end
+                                                             } else {
+                                                                 entityinsentient.die();
+                                                             }
+ 
+-                                                            if (l2 >= entityinsentient.cU()) {
++                                                            // Spigot start
++                                                            if ( moblimit <= 0 ) {
++                                                                // If we're past limit, stop spawn
++                                                                // Spigot end
+                                                                 continue label120;
+                                                             }
+                                                         }
+diff --git a/src/main/java/org/spigotmc/SpigotWorldConfig.java b/src/main/java/org/spigotmc/SpigotWorldConfig.java
+index f5096e3a4..3dee3ff5e 100644
+--- a/src/main/java/org/spigotmc/SpigotWorldConfig.java
++++ b/src/main/java/org/spigotmc/SpigotWorldConfig.java
+@@ -126,4 +126,11 @@ public class SpigotWorldConfig
+         viewDistance = getInt( "view-distance", Bukkit.getViewDistance() );
+         log( "View Distance: " + viewDistance );
+     }
++
++    public byte mobSpawnRange;
++    private void mobSpawnRange()
++    {
++        mobSpawnRange = (byte) getInt( "mob-spawn-range", 4 );
++        log( "Mob Spawn Range: " + mobSpawnRange );
++    }
+ }
+-- 
+2.14.1
+

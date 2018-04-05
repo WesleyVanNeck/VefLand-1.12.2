@@ -1,0 +1,53 @@
+From 092ba1a1d235cda30452f83ada0d9d70c1109320 Mon Sep 17 00:00:00 2001
+From: md_5 <md_5@live.com.au>
+Date: Fri, 21 Jun 2013 18:05:54 +1000
+Subject: [PATCH] Allow Disabling of Command TabComplete
+
+
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftServer.java b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+index 9b0a54874..24da1bc83 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftServer.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftServer.java
+@@ -1570,6 +1570,13 @@ public final class CraftServer implements Server {
+     }
+ 
+     public List<String> tabCompleteCommand(Player player, String message, BlockPosition pos) {
++        // Spigot Start
++		if ( (org.spigotmc.SpigotConfig.tabComplete < 0 || message.length() <= org.spigotmc.SpigotConfig.tabComplete) && !message.contains( " " ) )
++        {
++            return ImmutableList.of();
++        }
++        // Spigot End
++
+         List<String> completions = null;
+         try {
+             if (message.startsWith("/")) {
+diff --git a/src/main/java/org/spigotmc/SpigotConfig.java b/src/main/java/org/spigotmc/SpigotConfig.java
+index 45e908ed4..7e75f3e92 100644
+--- a/src/main/java/org/spigotmc/SpigotConfig.java
++++ b/src/main/java/org/spigotmc/SpigotConfig.java
+@@ -156,4 +156,21 @@ public class SpigotConfig
+     {
+         logCommands = getBoolean( "commands.log", true );
+     }
++
++    public static int tabComplete;
++    private static void tabComplete()
++    {
++        if ( version < 6 )
++        {
++            boolean oldValue = getBoolean( "commands.tab-complete", true );
++            if ( oldValue )
++            {
++                set( "commands.tab-complete", 0 );
++            } else
++            {
++                set( "commands.tab-complete", -1 );
++            }
++        }
++        tabComplete = getInt( "commands.tab-complete", 0 );
++    }
+ }
+-- 
+2.14.1
+

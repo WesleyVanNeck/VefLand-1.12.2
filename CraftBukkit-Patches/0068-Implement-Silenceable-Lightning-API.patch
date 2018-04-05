@@ -1,0 +1,87 @@
+From ee8c1900c2eb31fe7a21fd83140edf1337e39fde Mon Sep 17 00:00:00 2001
+From: drXor <mcyoungsota@gmail.com>
+Date: Sun, 23 Feb 2014 16:16:59 -0400
+Subject: [PATCH] Implement Silenceable Lightning API
+
+
+diff --git a/src/main/java/net/minecraft/server/EntityLightning.java b/src/main/java/net/minecraft/server/EntityLightning.java
+index a61531ad2..acb3408d5 100644
+--- a/src/main/java/net/minecraft/server/EntityLightning.java
++++ b/src/main/java/net/minecraft/server/EntityLightning.java
+@@ -11,6 +11,7 @@ public class EntityLightning extends EntityWeather {
+     private int c;
+     private final boolean d;
+     public boolean isEffect; // CraftBukkit
++    public boolean isSilent = false; // Spigot
+ 
+     public EntityLightning(World world, double d0, double d1, double d2, boolean flag) {
+         super(world);
+@@ -46,13 +47,21 @@ public class EntityLightning extends EntityWeather {
+ 
+     }
+ 
++    // Spigot start
++    public EntityLightning(World world, double d0, double d1, double d2, boolean isEffect, boolean isSilent)
++    {
++        this( world, d0, d1, d2, isEffect );
++        this.isSilent = isSilent;
++    }
++    // Spigot end
++
+     public SoundCategory bK() {
+         return SoundCategory.WEATHER;
+     }
+ 
+     public void B_() {
+         super.B_();
+-        if (this.lifeTicks == 2) {
++        if (!isSilent && this.lifeTicks == 2) { // Spigot
+             // CraftBukkit start - Use relative location for far away sounds
+             // this.world.a((EntityHuman) null, this.locX, this.locY, this.locZ, SoundEffects.dG, SoundCategory.WEATHER, 10000.0F, 0.8F + this.random.nextFloat() * 0.2F);
+             float pitch = 0.8F + this.random.nextFloat() * 0.2F;
+diff --git a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+index 120fc2fb5..5c553936b 100644
+--- a/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
++++ b/src/main/java/org/bukkit/craftbukkit/CraftWorld.java
+@@ -1629,6 +1629,22 @@ public class CraftWorld implements World {
+         {
+             CraftWorld.this.playEffect( location, effect, 0 );
+         }
++
++        @Override
++        public LightningStrike strikeLightning(Location loc, boolean isSilent)
++        {
++            EntityLightning lightning = new EntityLightning( world, loc.getX(), loc.getY(), loc.getZ(), false, isSilent );
++            world.strikeLightning( lightning );
++            return new CraftLightningStrike( server, lightning );
++        }
++
++        @Override
++        public LightningStrike strikeLightningEffect(Location loc, boolean isSilent)
++        {
++            EntityLightning lightning = new EntityLightning( world, loc.getX(), loc.getY(), loc.getZ(), true, isSilent );
++            world.strikeLightning( lightning );
++            return new CraftLightningStrike( server, lightning );
++        }
+     };
+ 
+     public Spigot spigot()
+diff --git a/src/main/java/org/bukkit/craftbukkit/entity/CraftLightningStrike.java b/src/main/java/org/bukkit/craftbukkit/entity/CraftLightningStrike.java
+index 194d830e1..ddd5ccd58 100644
+--- a/src/main/java/org/bukkit/craftbukkit/entity/CraftLightningStrike.java
++++ b/src/main/java/org/bukkit/craftbukkit/entity/CraftLightningStrike.java
+@@ -31,6 +31,11 @@ public class CraftLightningStrike extends CraftEntity implements LightningStrike
+     // Spigot start
+     private final LightningStrike.Spigot spigot = new LightningStrike.Spigot() {
+ 
++        @Override
++        public boolean isSilent()
++        {
++            return getHandle().isSilent;
++        }
+     };
+ 
+     @Override
+-- 
+2.14.1
+

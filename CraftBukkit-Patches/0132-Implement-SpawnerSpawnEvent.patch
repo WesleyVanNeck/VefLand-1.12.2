@@ -1,0 +1,49 @@
+From 7a980e4fa7c2a251634152e2877fba178568264e Mon Sep 17 00:00:00 2001
+From: md_5 <git@md-5.net>
+Date: Thu, 3 Mar 2016 19:45:46 +1100
+Subject: [PATCH] Implement SpawnerSpawnEvent.
+
+
+diff --git a/src/main/java/net/minecraft/server/MobSpawnerAbstract.java b/src/main/java/net/minecraft/server/MobSpawnerAbstract.java
+index 439810bc4..e87f90474 100644
+--- a/src/main/java/net/minecraft/server/MobSpawnerAbstract.java
++++ b/src/main/java/net/minecraft/server/MobSpawnerAbstract.java
+@@ -107,6 +107,9 @@ public abstract class MobSpawnerAbstract {
+                         {
+                             entity.fromMobSpawner = true;
+                         }
++                        if (org.bukkit.craftbukkit.event.CraftEventFactory.callSpawnerSpawnEvent(entity, blockposition).isCancelled()) {
++                            continue;
++                        }
+                         // Spigot End
+                         ChunkRegionLoader.a(entity, world, org.bukkit.event.entity.CreatureSpawnEvent.SpawnReason.SPAWNER); // CraftBukkit
+                         world.triggerEffect(2004, blockposition, 0);
+diff --git a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
+index c4bc628bc..bc84dd30f 100644
+--- a/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
++++ b/src/main/java/org/bukkit/craftbukkit/event/CraftEventFactory.java
+@@ -1017,6 +1017,21 @@ public class CraftEventFactory {
+         return event;
+     }
+ 
++    /**
++     * Mob spawner event.
++     */
++    public static SpawnerSpawnEvent callSpawnerSpawnEvent(Entity spawnee, BlockPosition pos) {
++        org.bukkit.craftbukkit.entity.CraftEntity entity = spawnee.getBukkitEntity();
++        BlockState state = entity.getWorld().getBlockAt(pos.getX(), pos.getY(), pos.getZ()).getState();
++        if (!(state instanceof org.bukkit.block.CreatureSpawner)) {
++            state = null;
++        }
++
++        SpawnerSpawnEvent event = new SpawnerSpawnEvent(entity, (org.bukkit.block.CreatureSpawner) state);
++        entity.getServer().getPluginManager().callEvent(event);
++        return event;
++    }
++
+     public static EntityToggleGlideEvent callToggleGlideEvent(EntityLiving entity, boolean gliding) {
+         EntityToggleGlideEvent event = new EntityToggleGlideEvent((LivingEntity) entity.getBukkitEntity(), gliding);
+         entity.world.getServer().getPluginManager().callEvent(event);
+-- 
+2.14.1
+

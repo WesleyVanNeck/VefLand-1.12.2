@@ -1,0 +1,3273 @@
+From 4e6eac9c5595751afc74e2d579daa42bdbea1760 Mon Sep 17 00:00:00 2001
+From: md_5 <md_5@live.com.au>
+Date: Sun, 1 Dec 2013 15:10:48 +1100
+Subject: [PATCH] mc-dev imports
+
+Imported files which are only modified by Spigot, not upstream. Files here should be completely unmodified aside from trivial changes such as adding throws statements to ensure proper compilation. You may need to add unrelated files in order to ensure a compilable result in the face of synthetic methods.
+
+diff --git a/src/main/java/net/minecraft/server/AdvancementDataWorld.java b/src/main/java/net/minecraft/server/AdvancementDataWorld.java
+new file mode 100644
+index 000000000..5ae0609d8
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/AdvancementDataWorld.java
+@@ -0,0 +1,195 @@
++package net.minecraft.server;
++
++import com.google.common.collect.Maps;
++import com.google.gson.Gson;
++import com.google.gson.GsonBuilder;
++import com.google.gson.JsonDeserializationContext;
++import com.google.gson.JsonDeserializer;
++import com.google.gson.JsonElement;
++import com.google.gson.JsonObject;
++import com.google.gson.JsonParseException;
++import java.io.BufferedReader;
++import java.io.File;
++import java.io.IOException;
++import java.io.Reader;
++import java.lang.reflect.Type;
++import java.net.URI;
++import java.net.URISyntaxException;
++import java.net.URL;
++import java.nio.charset.StandardCharsets;
++import java.nio.file.FileSystem;
++import java.nio.file.FileSystems;
++import java.nio.file.FileVisitOption;
++import java.nio.file.Files;
++import java.nio.file.Paths;
++import java.util.Collections;
++import java.util.HashMap;
++import java.util.Iterator;
++import java.util.Map;
++import javax.annotation.Nullable;
++import org.apache.commons.io.FileUtils;
++import org.apache.commons.io.FilenameUtils;
++import org.apache.commons.io.IOUtils;
++import org.apache.logging.log4j.LogManager;
++import org.apache.logging.log4j.Logger;
++
++public class AdvancementDataWorld {
++
++    private static final Logger a = LogManager.getLogger();
++    public static final Gson DESERIALIZER = (new GsonBuilder()).registerTypeHierarchyAdapter(Advancement.SerializedAdvancement.class, new JsonDeserializer() {
++        public Advancement.SerializedAdvancement a(JsonElement jsonelement, Type type, JsonDeserializationContext jsondeserializationcontext) throws JsonParseException {
++            JsonObject jsonobject = ChatDeserializer.m(jsonelement, "advancement");
++
++            return Advancement.SerializedAdvancement.a(jsonobject, jsondeserializationcontext);
++        }
++
++        public Object deserialize(JsonElement jsonelement, Type type, JsonDeserializationContext jsondeserializationcontext) throws JsonParseException {
++            return this.a(jsonelement, type, jsondeserializationcontext);
++        }
++    }).registerTypeAdapter(AdvancementRewards.class, new AdvancementRewards.a()).registerTypeHierarchyAdapter(IChatBaseComponent.class, new IChatBaseComponent.ChatSerializer()).registerTypeHierarchyAdapter(ChatModifier.class, new ChatModifier.ChatModifierSerializer()).registerTypeAdapterFactory(new ChatTypeAdapterFactory()).create();
++    public static final Advancements REGISTRY = new Advancements();
++    public final File folder;
++    private boolean e;
++
++    public AdvancementDataWorld(@Nullable File file) {
++        this.folder = file;
++        this.reload();
++    }
++
++    public void reload() {
++        this.e = false;
++        AdvancementDataWorld.REGISTRY.a();
++        Map map = this.d();
++
++        this.a(map);
++        AdvancementDataWorld.REGISTRY.a(map);
++        Iterator iterator = AdvancementDataWorld.REGISTRY.b().iterator();
++
++        while (iterator.hasNext()) {
++            Advancement advancement = (Advancement) iterator.next();
++
++            if (advancement.c() != null) {
++                AdvancementTree.a(advancement);
++            }
++        }
++
++    }
++
++    public boolean b() {
++        return this.e;
++    }
++
++    private Map<MinecraftKey, Advancement.SerializedAdvancement> d() {
++        if (this.folder == null) {
++            return Maps.newHashMap();
++        } else {
++            HashMap hashmap = Maps.newHashMap();
++
++            this.folder.mkdirs();
++            Iterator iterator = FileUtils.listFiles(this.folder, new String[] { "json"}, true).iterator();
++
++            while (iterator.hasNext()) {
++                File file = (File) iterator.next();
++                String s = FilenameUtils.removeExtension(this.folder.toURI().relativize(file.toURI()).toString());
++                String[] astring = s.split("/", 2);
++
++                if (astring.length == 2) {
++                    MinecraftKey minecraftkey = new MinecraftKey(astring[0], astring[1]);
++
++                    try {
++                        Advancement.SerializedAdvancement advancement_serializedadvancement = (Advancement.SerializedAdvancement) ChatDeserializer.a(AdvancementDataWorld.DESERIALIZER, FileUtils.readFileToString(file, StandardCharsets.UTF_8), Advancement.SerializedAdvancement.class);
++
++                        if (advancement_serializedadvancement == null) {
++                            AdvancementDataWorld.a.error("Couldn\'t load custom advancement " + minecraftkey + " from " + file + " as it\'s empty or null");
++                        } else {
++                            hashmap.put(minecraftkey, advancement_serializedadvancement);
++                        }
++                    } catch (IllegalArgumentException | JsonParseException jsonparseexception) {
++                        AdvancementDataWorld.a.error("Parsing error loading custom advancement " + minecraftkey, jsonparseexception);
++                        this.e = true;
++                    } catch (IOException ioexception) {
++                        AdvancementDataWorld.a.error("Couldn\'t read custom advancement " + minecraftkey + " from " + file, ioexception);
++                        this.e = true;
++                    }
++                }
++            }
++
++            return hashmap;
++        }
++    }
++
++    private void a(Map<MinecraftKey, Advancement.SerializedAdvancement> map) {
++        FileSystem filesystem = null;
++
++        try {
++            URL url = AdvancementDataWorld.class.getResource("/assets/.mcassetsroot");
++
++            if (url == null) {
++                AdvancementDataWorld.a.error("Couldn\'t find .mcassetsroot");
++                this.e = true;
++            } else {
++                URI uri = url.toURI();
++                java.nio.file.Path java_nio_file_path;
++
++                if ("file".equals(uri.getScheme())) {
++                    java_nio_file_path = Paths.get(CraftingManager.class.getResource("/assets/minecraft/advancements").toURI());
++                } else {
++                    if (!"jar".equals(uri.getScheme())) {
++                        AdvancementDataWorld.a.error("Unsupported scheme " + uri + " trying to list all built-in advancements (NYI?)");
++                        this.e = true;
++                        return;
++                    }
++
++                    filesystem = FileSystems.newFileSystem(uri, Collections.emptyMap());
++                    java_nio_file_path = filesystem.getPath("/assets/minecraft/advancements", new String[0]);
++                }
++
++                Iterator iterator = Files.walk(java_nio_file_path, new FileVisitOption[0]).iterator();
++
++                while (iterator.hasNext()) {
++                    java.nio.file.Path java_nio_file_path1 = (java.nio.file.Path) iterator.next();
++
++                    if ("json".equals(FilenameUtils.getExtension(java_nio_file_path1.toString()))) {
++                        java.nio.file.Path java_nio_file_path2 = java_nio_file_path.relativize(java_nio_file_path1);
++                        String s = FilenameUtils.removeExtension(java_nio_file_path2.toString()).replaceAll("\\\\", "/");
++                        MinecraftKey minecraftkey = new MinecraftKey("minecraft", s);
++
++                        if (!map.containsKey(minecraftkey)) {
++                            BufferedReader bufferedreader = null;
++
++                            try {
++                                bufferedreader = Files.newBufferedReader(java_nio_file_path1);
++                                Advancement.SerializedAdvancement advancement_serializedadvancement = (Advancement.SerializedAdvancement) ChatDeserializer.a(AdvancementDataWorld.DESERIALIZER, (Reader) bufferedreader, Advancement.SerializedAdvancement.class);
++
++                                map.put(minecraftkey, advancement_serializedadvancement);
++                            } catch (JsonParseException jsonparseexception) {
++                                AdvancementDataWorld.a.error("Parsing error loading built-in advancement " + minecraftkey, jsonparseexception);
++                                this.e = true;
++                            } catch (IOException ioexception) {
++                                AdvancementDataWorld.a.error("Couldn\'t read advancement " + minecraftkey + " from " + java_nio_file_path1, ioexception);
++                                this.e = true;
++                            } finally {
++                                IOUtils.closeQuietly(bufferedreader);
++                            }
++                        }
++                    }
++                }
++
++            }
++        } catch (IOException | URISyntaxException urisyntaxexception) {
++            AdvancementDataWorld.a.error("Couldn\'t get a list of all built-in advancement files", urisyntaxexception);
++            this.e = true;
++        } finally {
++            IOUtils.closeQuietly(filesystem);
++        }
++    }
++
++    @Nullable
++    public Advancement a(MinecraftKey minecraftkey) {
++        return AdvancementDataWorld.REGISTRY.a(minecraftkey);
++    }
++
++    public Iterable<Advancement> c() {
++        return AdvancementDataWorld.REGISTRY.c();
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/AttributeRanged.java b/src/main/java/net/minecraft/server/AttributeRanged.java
+new file mode 100644
+index 000000000..130597c6e
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/AttributeRanged.java
+@@ -0,0 +1,37 @@
++package net.minecraft.server;
++
++import javax.annotation.Nullable;
++
++public class AttributeRanged extends AttributeBase {
++
++    private final double a;
++    private final double b;
++    private String c;
++
++    public AttributeRanged(@Nullable IAttribute iattribute, String s, double d0, double d1, double d2) {
++        super(iattribute, s, d0);
++        this.a = d1;
++        this.b = d2;
++        if (d1 > d2) {
++            throw new IllegalArgumentException("Minimum value cannot be bigger than maximum value!");
++        } else if (d0 < d1) {
++            throw new IllegalArgumentException("Default value cannot be lower than minimum value!");
++        } else if (d0 > d2) {
++            throw new IllegalArgumentException("Default value cannot be bigger than maximum value!");
++        }
++    }
++
++    public AttributeRanged a(String s) {
++        this.c = s;
++        return this;
++    }
++
++    public String g() {
++        return this.c;
++    }
++
++    public double a(double d0) {
++        d0 = MathHelper.a(d0, this.a, this.b);
++        return d0;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/BlockState.java b/src/main/java/net/minecraft/server/BlockState.java
+new file mode 100644
+index 000000000..60703c627
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/BlockState.java
+@@ -0,0 +1,42 @@
++package net.minecraft.server;
++
++import com.google.common.base.MoreObjects;
++
++public abstract class BlockState<T extends Comparable<T>> implements IBlockState<T> {
++
++    private final Class<T> a;
++    private final String b;
++
++    protected BlockState(String s, Class<T> oclass) {
++        this.a = oclass;
++        this.b = s;
++    }
++
++    public String a() {
++        return this.b;
++    }
++
++    public Class<T> b() {
++        return this.a;
++    }
++
++    public String toString() {
++        return MoreObjects.toStringHelper(this).add("name", this.b).add("clazz", this.a).add("values", this.c()).toString();
++    }
++
++    public boolean equals(Object object) {
++        if (this == object) {
++            return true;
++        } else if (!(object instanceof BlockState)) {
++            return false;
++        } else {
++            BlockState blockstate = (BlockState) object;
++
++            return this.a.equals(blockstate.a) && this.b.equals(blockstate.b);
++        }
++    }
++
++    public int hashCode() {
++        return 31 * this.a.hashCode() + this.b.hashCode();
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/BlockStateBoolean.java b/src/main/java/net/minecraft/server/BlockStateBoolean.java
+new file mode 100644
+index 000000000..5b193f48b
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/BlockStateBoolean.java
+@@ -0,0 +1,46 @@
++package net.minecraft.server;
++
++import com.google.common.base.Optional;
++import com.google.common.collect.ImmutableSet;
++import java.util.Collection;
++
++public class BlockStateBoolean extends BlockState<Boolean> {
++
++    private final ImmutableSet<Boolean> a = ImmutableSet.of(Boolean.valueOf(true), Boolean.valueOf(false));
++
++    protected BlockStateBoolean(String s) {
++        super(s, Boolean.class);
++    }
++
++    public Collection<Boolean> c() {
++        return this.a;
++    }
++
++    public static BlockStateBoolean of(String s) {
++        return new BlockStateBoolean(s);
++    }
++
++    public Optional<Boolean> b(String s) {
++        return !"true".equals(s) && !"false".equals(s) ? Optional.absent() : Optional.of(Boolean.valueOf(s));
++    }
++
++    public String a(Boolean obool) {
++        return obool.toString();
++    }
++
++    public boolean equals(Object object) {
++        if (this == object) {
++            return true;
++        } else if (object instanceof BlockStateBoolean && super.equals(object)) {
++            BlockStateBoolean blockstateboolean = (BlockStateBoolean) object;
++
++            return this.a.equals(blockstateboolean.a);
++        } else {
++            return false;
++        }
++    }
++
++    public int hashCode() {
++        return 31 * super.hashCode() + this.a.hashCode();
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/BlockStateEnum.java b/src/main/java/net/minecraft/server/BlockStateEnum.java
+new file mode 100644
+index 000000000..288c52c55
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/BlockStateEnum.java
+@@ -0,0 +1,84 @@
++package net.minecraft.server;
++
++import com.google.common.base.Optional;
++import com.google.common.base.Predicate;
++import com.google.common.base.Predicates;
++import com.google.common.collect.Collections2;
++import com.google.common.collect.ImmutableSet;
++import com.google.common.collect.Lists;
++import com.google.common.collect.Maps;
++import java.util.Collection;
++import java.util.Iterator;
++import java.util.Map;
++
++public class BlockStateEnum<T extends Enum<T> & INamable> extends BlockState<T> {
++
++    private final ImmutableSet<T> a;
++    private final Map<String, T> b = Maps.newHashMap();
++
++    protected BlockStateEnum(String s, Class<T> oclass, Collection<T> collection) {
++        super(s, oclass);
++        this.a = ImmutableSet.copyOf(collection);
++        Iterator iterator = collection.iterator();
++
++        while (iterator.hasNext()) {
++            Enum oenum = (Enum) iterator.next();
++            String s1 = ((INamable) oenum).getName();
++
++            if (this.b.containsKey(s1)) {
++                throw new IllegalArgumentException("Multiple values have the same name \'" + s1 + "\'");
++            }
++
++            this.b.put(s1, (T) oenum);
++        }
++
++    }
++
++    public Collection<T> c() {
++        return this.a;
++    }
++
++    public Optional<T> b(String s) {
++        return Optional.fromNullable(this.b.get(s));
++    }
++
++    public String a(T t0) {
++        return ((INamable) t0).getName();
++    }
++
++    public boolean equals(Object object) {
++        if (this == object) {
++            return true;
++        } else if (object instanceof BlockStateEnum && super.equals(object)) {
++            BlockStateEnum blockstateenum = (BlockStateEnum) object;
++
++            return this.a.equals(blockstateenum.a) && this.b.equals(blockstateenum.b);
++        } else {
++            return false;
++        }
++    }
++
++    public int hashCode() {
++        int i = super.hashCode();
++
++        i = 31 * i + this.a.hashCode();
++        i = 31 * i + this.b.hashCode();
++        return i;
++    }
++
++    public static <T extends Enum<T> & INamable> BlockStateEnum<T> of(String s, Class<T> oclass) {
++        return a(s, oclass, Predicates.alwaysTrue());
++    }
++
++    public static <T extends Enum<T> & INamable> BlockStateEnum<T> a(String s, Class<T> oclass, Predicate<T> predicate) {
++        return a(s, oclass, Collections2.filter(Lists.newArrayList(oclass.getEnumConstants()), predicate));
++    }
++
++    public static <T extends Enum<T> & INamable> BlockStateEnum<T> of(String s, Class<T> oclass, T... at) {
++        return a(s, oclass, (Collection) Lists.newArrayList(at));
++    }
++
++    public static <T extends Enum<T> & INamable> BlockStateEnum<T> a(String s, Class<T> oclass, Collection<T> collection) {
++        return new BlockStateEnum(s, oclass, collection);
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/BlockStateInteger.java b/src/main/java/net/minecraft/server/BlockStateInteger.java
+new file mode 100644
+index 000000000..2b7870ead
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/BlockStateInteger.java
+@@ -0,0 +1,67 @@
++package net.minecraft.server;
++
++import com.google.common.base.Optional;
++import com.google.common.collect.ImmutableSet;
++import com.google.common.collect.Sets;
++import java.util.Collection;
++import java.util.HashSet;
++
++public class BlockStateInteger extends BlockState<Integer> {
++
++    private final ImmutableSet<Integer> a;
++
++    protected BlockStateInteger(String s, int i, int j) {
++        super(s, Integer.class);
++        if (i < 0) {
++            throw new IllegalArgumentException("Min value of " + s + " must be 0 or greater");
++        } else if (j <= i) {
++            throw new IllegalArgumentException("Max value of " + s + " must be greater than min (" + i + ")");
++        } else {
++            HashSet hashset = Sets.newHashSet();
++
++            for (int k = i; k <= j; ++k) {
++                hashset.add(Integer.valueOf(k));
++            }
++
++            this.a = ImmutableSet.copyOf(hashset);
++        }
++    }
++
++    public Collection<Integer> c() {
++        return this.a;
++    }
++
++    public boolean equals(Object object) {
++        if (this == object) {
++            return true;
++        } else if (object instanceof BlockStateInteger && super.equals(object)) {
++            BlockStateInteger blockstateinteger = (BlockStateInteger) object;
++
++            return this.a.equals(blockstateinteger.a);
++        } else {
++            return false;
++        }
++    }
++
++    public int hashCode() {
++        return 31 * super.hashCode() + this.a.hashCode();
++    }
++
++    public static BlockStateInteger of(String s, int i, int j) {
++        return new BlockStateInteger(s, i, j);
++    }
++
++    public Optional<Integer> b(String s) {
++        try {
++            Integer integer = Integer.valueOf(s);
++
++            return this.a.contains(integer) ? Optional.of(integer) : Optional.absent();
++        } catch (NumberFormatException numberformatexception) {
++            return Optional.absent();
++        }
++    }
++
++    public String a(Integer integer) {
++        return integer.toString();
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/CommandDispatcher.java b/src/main/java/net/minecraft/server/CommandDispatcher.java
+new file mode 100644
+index 000000000..ab4a51ac0
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/CommandDispatcher.java
+@@ -0,0 +1,131 @@
++package net.minecraft.server;
++
++import java.util.Iterator;
++
++public class CommandDispatcher extends CommandHandler implements ICommandDispatcher {
++
++    private final MinecraftServer a;
++
++    public CommandDispatcher(MinecraftServer minecraftserver) {
++        this.a = minecraftserver;
++        this.a((ICommand) (new CommandTime()));
++        this.a((ICommand) (new CommandGamemode()));
++        this.a((ICommand) (new CommandDifficulty()));
++        this.a((ICommand) (new CommandGamemodeDefault()));
++        this.a((ICommand) (new CommandKill()));
++        this.a((ICommand) (new CommandToggleDownfall()));
++        this.a((ICommand) (new CommandWeather()));
++        this.a((ICommand) (new CommandXp()));
++        this.a((ICommand) (new CommandTp()));
++        this.a((ICommand) (new CommandTeleport()));
++        this.a((ICommand) (new CommandGive()));
++        this.a((ICommand) (new CommandReplaceItem()));
++        this.a((ICommand) (new CommandStats()));
++        this.a((ICommand) (new CommandEffect()));
++        this.a((ICommand) (new CommandEnchant()));
++        this.a((ICommand) (new CommandParticle()));
++        this.a((ICommand) (new CommandMe()));
++        this.a((ICommand) (new CommandSeed()));
++        this.a((ICommand) (new CommandHelp()));
++        this.a((ICommand) (new CommandDebug()));
++        this.a((ICommand) (new CommandTell()));
++        this.a((ICommand) (new CommandSay()));
++        this.a((ICommand) (new CommandSpawnpoint()));
++        this.a((ICommand) (new CommandSetWorldSpawn()));
++        this.a((ICommand) (new CommandGamerule()));
++        this.a((ICommand) (new CommandClear()));
++        this.a((ICommand) (new CommandTestFor()));
++        this.a((ICommand) (new CommandSpreadPlayers()));
++        this.a((ICommand) (new CommandPlaySound()));
++        this.a((ICommand) (new CommandScoreboard()));
++        this.a((ICommand) (new CommandExecute()));
++        this.a((ICommand) (new CommandTrigger()));
++        this.a((ICommand) (new CommandAdvancement()));
++        this.a((ICommand) (new CommandRecipe()));
++        this.a((ICommand) (new CommandSummon()));
++        this.a((ICommand) (new CommandSetBlock()));
++        this.a((ICommand) (new CommandFill()));
++        this.a((ICommand) (new CommandClone()));
++        this.a((ICommand) (new CommandTestForBlocks()));
++        this.a((ICommand) (new CommandBlockData()));
++        this.a((ICommand) (new CommandTestForBlock()));
++        this.a((ICommand) (new CommandTellRaw()));
++        this.a((ICommand) (new CommandWorldBorder()));
++        this.a((ICommand) (new CommandTitle()));
++        this.a((ICommand) (new CommandEntityData()));
++        this.a((ICommand) (new CommandStopSound()));
++        this.a((ICommand) (new CommandLocate()));
++        this.a((ICommand) (new CommandReload()));
++        this.a((ICommand) (new CommandFunction()));
++        if (minecraftserver.aa()) {
++            this.a((ICommand) (new CommandOp()));
++            this.a((ICommand) (new CommandDeop()));
++            this.a((ICommand) (new CommandStop()));
++            this.a((ICommand) (new CommandSaveAll()));
++            this.a((ICommand) (new CommandSaveOff()));
++            this.a((ICommand) (new CommandSaveOn()));
++            this.a((ICommand) (new CommandBanIp()));
++            this.a((ICommand) (new CommandPardonIP()));
++            this.a((ICommand) (new CommandBan()));
++            this.a((ICommand) (new CommandBanList()));
++            this.a((ICommand) (new CommandPardon()));
++            this.a((ICommand) (new CommandKick()));
++            this.a((ICommand) (new CommandList()));
++            this.a((ICommand) (new CommandWhitelist()));
++            this.a((ICommand) (new CommandIdleTimeout()));
++        } else {
++            this.a((ICommand) (new CommandPublish()));
++        }
++
++        CommandAbstract.a((ICommandDispatcher) this);
++    }
++
++    public void a(ICommandListener icommandlistener, ICommand icommand, int i, String s, Object... aobject) {
++        boolean flag = true;
++        MinecraftServer minecraftserver = this.a;
++
++        if (!icommandlistener.getSendCommandFeedback()) {
++            flag = false;
++        }
++
++        ChatMessage chatmessage = new ChatMessage("chat.type.admin", new Object[] { icommandlistener.getName(), new ChatMessage(s, aobject)});
++
++        chatmessage.getChatModifier().setColor(EnumChatFormat.GRAY);
++        chatmessage.getChatModifier().setItalic(Boolean.valueOf(true));
++        if (flag) {
++            Iterator iterator = minecraftserver.getPlayerList().v().iterator();
++
++            while (iterator.hasNext()) {
++                EntityHuman entityhuman = (EntityHuman) iterator.next();
++
++                if (entityhuman != icommandlistener && minecraftserver.getPlayerList().isOp(entityhuman.getProfile()) && icommand.canUse(this.a, icommandlistener)) {
++                    boolean flag1 = icommandlistener instanceof MinecraftServer && this.a.s();
++                    boolean flag2 = icommandlistener instanceof RemoteControlCommandListener && this.a.r();
++
++                    if (flag1 || flag2 || !(icommandlistener instanceof RemoteControlCommandListener) && !(icommandlistener instanceof MinecraftServer)) {
++                        entityhuman.sendMessage(chatmessage);
++                    }
++                }
++            }
++        }
++
++        if (icommandlistener != minecraftserver && minecraftserver.worldServer[0].getGameRules().getBoolean("logAdminCommands")) {
++            minecraftserver.sendMessage(chatmessage);
++        }
++
++        boolean flag3 = minecraftserver.worldServer[0].getGameRules().getBoolean("sendCommandFeedback");
++
++        if (icommandlistener instanceof CommandBlockListenerAbstract) {
++            flag3 = ((CommandBlockListenerAbstract) icommandlistener).n();
++        }
++
++        if ((i & 1) != 1 && flag3 || icommandlistener instanceof MinecraftServer) {
++            icommandlistener.sendMessage(new ChatMessage(s, aobject));
++        }
++
++    }
++
++    protected MinecraftServer a() {
++        return this.a;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/EntitySquid.java b/src/main/java/net/minecraft/server/EntitySquid.java
+new file mode 100644
+index 000000000..b1e8924ed
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/EntitySquid.java
+@@ -0,0 +1,185 @@
++package net.minecraft.server;
++
++import javax.annotation.Nullable;
++
++public class EntitySquid extends EntityWaterAnimal {
++
++    public float a;
++    public float b;
++    public float c;
++    public float bv;
++    public float bw;
++    public float bx;
++    public float by;
++    public float bz;
++    private float bA;
++    private float bB;
++    private float bC;
++    private float bD;
++    private float bE;
++    private float bF;
++
++    public EntitySquid(World world) {
++        super(world);
++        this.setSize(0.8F, 0.8F);
++        this.random.setSeed((long) (1 + this.getId()));
++        this.bB = 1.0F / (this.random.nextFloat() + 1.0F) * 0.2F;
++    }
++
++    public static void a(DataConverterManager dataconvertermanager) {
++        EntityInsentient.a(dataconvertermanager, EntitySquid.class);
++    }
++
++    protected void r() {
++        this.goalSelector.a(0, new EntitySquid.PathfinderGoalSquid(this));
++    }
++
++    protected void initAttributes() {
++        super.initAttributes();
++        this.getAttributeInstance(GenericAttributes.maxHealth).setValue(10.0D);
++    }
++
++    public float getHeadHeight() {
++        return this.length * 0.5F;
++    }
++
++    protected SoundEffect F() {
++        return SoundEffects.hF;
++    }
++
++    protected SoundEffect d(DamageSource damagesource) {
++        return SoundEffects.hH;
++    }
++
++    protected SoundEffect cf() {
++        return SoundEffects.hG;
++    }
++
++    protected float cq() {
++        return 0.4F;
++    }
++
++    protected boolean playStepSound() {
++        return false;
++    }
++
++    @Nullable
++    protected MinecraftKey J() {
++        return LootTables.ak;
++    }
++
++    public void n() {
++        super.n();
++        this.b = this.a;
++        this.bv = this.c;
++        this.bx = this.bw;
++        this.bz = this.by;
++        this.bw += this.bB;
++        if ((double) this.bw > 6.283185307179586D) {
++            if (this.world.isClientSide) {
++                this.bw = 6.2831855F;
++            } else {
++                this.bw = (float) ((double) this.bw - 6.283185307179586D);
++                if (this.random.nextInt(10) == 0) {
++                    this.bB = 1.0F / (this.random.nextFloat() + 1.0F) * 0.2F;
++                }
++
++                this.world.broadcastEntityEffect(this, (byte) 19);
++            }
++        }
++
++        if (this.inWater) {
++            float f;
++
++            if (this.bw < 3.1415927F) {
++                f = this.bw / 3.1415927F;
++                this.by = MathHelper.sin(f * f * 3.1415927F) * 3.1415927F * 0.25F;
++                if ((double) f > 0.75D) {
++                    this.bA = 1.0F;
++                    this.bC = 1.0F;
++                } else {
++                    this.bC *= 0.8F;
++                }
++            } else {
++                this.by = 0.0F;
++                this.bA *= 0.9F;
++                this.bC *= 0.99F;
++            }
++
++            if (!this.world.isClientSide) {
++                this.motX = (double) (this.bD * this.bA);
++                this.motY = (double) (this.bE * this.bA);
++                this.motZ = (double) (this.bF * this.bA);
++            }
++
++            f = MathHelper.sqrt(this.motX * this.motX + this.motZ * this.motZ);
++            this.aN += (-((float) MathHelper.c(this.motX, this.motZ)) * 57.295776F - this.aN) * 0.1F;
++            this.yaw = this.aN;
++            this.c = (float) ((double) this.c + 3.141592653589793D * (double) this.bC * 1.5D);
++            this.a += (-((float) MathHelper.c((double) f, this.motY)) * 57.295776F - this.a) * 0.1F;
++        } else {
++            this.by = MathHelper.e(MathHelper.sin(this.bw)) * 3.1415927F * 0.25F;
++            if (!this.world.isClientSide) {
++                this.motX = 0.0D;
++                this.motZ = 0.0D;
++                if (this.hasEffect(MobEffects.LEVITATION)) {
++                    this.motY += 0.05D * (double) (this.getEffect(MobEffects.LEVITATION).getAmplifier() + 1) - this.motY;
++                } else if (!this.isNoGravity()) {
++                    this.motY -= 0.08D;
++                }
++
++                this.motY *= 0.9800000190734863D;
++            }
++
++            this.a = (float) ((double) this.a + (double) (-90.0F - this.a) * 0.02D);
++        }
++
++    }
++
++    public void a(float f, float f1, float f2) {
++        this.move(EnumMoveType.SELF, this.motX, this.motY, this.motZ);
++    }
++
++    public boolean P() {
++        return this.locY > 45.0D && this.locY < (double) this.world.getSeaLevel() && super.P();
++    }
++
++    public void b(float f, float f1, float f2) {
++        this.bD = f;
++        this.bE = f1;
++        this.bF = f2;
++    }
++
++    public boolean p() {
++        return this.bD != 0.0F || this.bE != 0.0F || this.bF != 0.0F;
++    }
++
++    static class PathfinderGoalSquid extends PathfinderGoal {
++
++        private final EntitySquid a;
++
++        public PathfinderGoalSquid(EntitySquid entitysquid) {
++            this.a = entitysquid;
++        }
++
++        public boolean a() {
++            return true;
++        }
++
++        public void e() {
++            int i = this.a.bW();
++
++            if (i > 100) {
++                this.a.b(0.0F, 0.0F, 0.0F);
++            } else if (this.a.getRandom().nextInt(50) == 0 || !this.a.inWater || !this.a.p()) {
++                float f = this.a.getRandom().nextFloat() * 6.2831855F;
++                float f1 = MathHelper.cos(f) * 0.2F;
++                float f2 = -0.1F + this.a.getRandom().nextFloat() * 0.2F;
++                float f3 = MathHelper.sin(f) * 0.2F;
++
++                this.a.b(f1, f2, f3);
++            }
++
++        }
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/GameProfileBanEntry.java b/src/main/java/net/minecraft/server/GameProfileBanEntry.java
+new file mode 100644
+index 000000000..27ce9d908
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/GameProfileBanEntry.java
+@@ -0,0 +1,47 @@
++package net.minecraft.server;
++
++import com.google.gson.JsonObject;
++import com.mojang.authlib.GameProfile;
++import java.util.Date;
++import java.util.UUID;
++
++public class GameProfileBanEntry extends ExpirableListEntry<GameProfile> {
++
++    public GameProfileBanEntry(GameProfile gameprofile) {
++        this(gameprofile, (Date) null, (String) null, (Date) null, (String) null);
++    }
++
++    public GameProfileBanEntry(GameProfile gameprofile, Date date, String s, Date date1, String s1) {
++        super(gameprofile, date1, s, date1, s1);
++    }
++
++    public GameProfileBanEntry(JsonObject jsonobject) {
++        super(b(jsonobject), jsonobject);
++    }
++
++    protected void a(JsonObject jsonobject) {
++        if (this.getKey() != null) {
++            jsonobject.addProperty("uuid", ((GameProfile) this.getKey()).getId() == null ? "" : ((GameProfile) this.getKey()).getId().toString());
++            jsonobject.addProperty("name", ((GameProfile) this.getKey()).getName());
++            super.a(jsonobject);
++        }
++    }
++
++    private static GameProfile b(JsonObject jsonobject) {
++        if (jsonobject.has("uuid") && jsonobject.has("name")) {
++            String s = jsonobject.get("uuid").getAsString();
++
++            UUID uuid;
++
++            try {
++                uuid = UUID.fromString(s);
++            } catch (Throwable throwable) {
++                return null;
++            }
++
++            return new GameProfile(uuid, jsonobject.get("name").getAsString());
++        } else {
++            return null;
++        }
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/GenericAttributes.java b/src/main/java/net/minecraft/server/GenericAttributes.java
+new file mode 100644
+index 000000000..d60cc232c
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/GenericAttributes.java
+@@ -0,0 +1,120 @@
++package net.minecraft.server;
++
++import java.util.Collection;
++import java.util.Iterator;
++import java.util.UUID;
++import javax.annotation.Nullable;
++import org.apache.logging.log4j.LogManager;
++import org.apache.logging.log4j.Logger;
++
++public class GenericAttributes {
++
++    private static final Logger k = LogManager.getLogger();
++    public static final IAttribute maxHealth = (new AttributeRanged((IAttribute) null, "generic.maxHealth", 20.0D, 0.0D, 1024.0D)).a("Max Health").a(true);
++    public static final IAttribute FOLLOW_RANGE = (new AttributeRanged((IAttribute) null, "generic.followRange", 32.0D, 0.0D, 2048.0D)).a("Follow Range");
++    public static final IAttribute c = (new AttributeRanged((IAttribute) null, "generic.knockbackResistance", 0.0D, 0.0D, 1.0D)).a("Knockback Resistance");
++    public static final IAttribute MOVEMENT_SPEED = (new AttributeRanged((IAttribute) null, "generic.movementSpeed", 0.699999988079071D, 0.0D, 1024.0D)).a("Movement Speed").a(true);
++    public static final IAttribute e = (new AttributeRanged((IAttribute) null, "generic.flyingSpeed", 0.4000000059604645D, 0.0D, 1024.0D)).a("Flying Speed").a(true);
++    public static final IAttribute ATTACK_DAMAGE = new AttributeRanged((IAttribute) null, "generic.attackDamage", 2.0D, 0.0D, 2048.0D);
++    public static final IAttribute g = (new AttributeRanged((IAttribute) null, "generic.attackSpeed", 4.0D, 0.0D, 1024.0D)).a(true);
++    public static final IAttribute h = (new AttributeRanged((IAttribute) null, "generic.armor", 0.0D, 0.0D, 30.0D)).a(true);
++    public static final IAttribute i = (new AttributeRanged((IAttribute) null, "generic.armorToughness", 0.0D, 0.0D, 20.0D)).a(true);
++    public static final IAttribute j = (new AttributeRanged((IAttribute) null, "generic.luck", 0.0D, -1024.0D, 1024.0D)).a(true);
++
++    public static NBTTagList a(AttributeMapBase attributemapbase) {
++        NBTTagList nbttaglist = new NBTTagList();
++        Iterator iterator = attributemapbase.a().iterator();
++
++        while (iterator.hasNext()) {
++            AttributeInstance attributeinstance = (AttributeInstance) iterator.next();
++
++            nbttaglist.add(a(attributeinstance));
++        }
++
++        return nbttaglist;
++    }
++
++    private static NBTTagCompound a(AttributeInstance attributeinstance) {
++        NBTTagCompound nbttagcompound = new NBTTagCompound();
++        IAttribute iattribute = attributeinstance.getAttribute();
++
++        nbttagcompound.setString("Name", iattribute.getName());
++        nbttagcompound.setDouble("Base", attributeinstance.b());
++        Collection collection = attributeinstance.c();
++
++        if (collection != null && !collection.isEmpty()) {
++            NBTTagList nbttaglist = new NBTTagList();
++            Iterator iterator = collection.iterator();
++
++            while (iterator.hasNext()) {
++                AttributeModifier attributemodifier = (AttributeModifier) iterator.next();
++
++                if (attributemodifier.e()) {
++                    nbttaglist.add(a(attributemodifier));
++                }
++            }
++
++            nbttagcompound.set("Modifiers", nbttaglist);
++        }
++
++        return nbttagcompound;
++    }
++
++    public static NBTTagCompound a(AttributeModifier attributemodifier) {
++        NBTTagCompound nbttagcompound = new NBTTagCompound();
++
++        nbttagcompound.setString("Name", attributemodifier.b());
++        nbttagcompound.setDouble("Amount", attributemodifier.d());
++        nbttagcompound.setInt("Operation", attributemodifier.c());
++        nbttagcompound.a("UUID", attributemodifier.a());
++        return nbttagcompound;
++    }
++
++    public static void a(AttributeMapBase attributemapbase, NBTTagList nbttaglist) {
++        for (int i = 0; i < nbttaglist.size(); ++i) {
++            NBTTagCompound nbttagcompound = nbttaglist.get(i);
++            AttributeInstance attributeinstance = attributemapbase.a(nbttagcompound.getString("Name"));
++
++            if (attributeinstance == null) {
++                GenericAttributes.k.warn("Ignoring unknown attribute \'{}\'", nbttagcompound.getString("Name"));
++            } else {
++                a(attributeinstance, nbttagcompound);
++            }
++        }
++
++    }
++
++    private static void a(AttributeInstance attributeinstance, NBTTagCompound nbttagcompound) {
++        attributeinstance.setValue(nbttagcompound.getDouble("Base"));
++        if (nbttagcompound.hasKeyOfType("Modifiers", 9)) {
++            NBTTagList nbttaglist = nbttagcompound.getList("Modifiers", 10);
++
++            for (int i = 0; i < nbttaglist.size(); ++i) {
++                AttributeModifier attributemodifier = a(nbttaglist.get(i));
++
++                if (attributemodifier != null) {
++                    AttributeModifier attributemodifier1 = attributeinstance.a(attributemodifier.a());
++
++                    if (attributemodifier1 != null) {
++                        attributeinstance.c(attributemodifier1);
++                    }
++
++                    attributeinstance.b(attributemodifier);
++                }
++            }
++        }
++
++    }
++
++    @Nullable
++    public static AttributeModifier a(NBTTagCompound nbttagcompound) {
++        UUID uuid = nbttagcompound.a("UUID");
++
++        try {
++            return new AttributeModifier(uuid, nbttagcompound.getString("Name"), nbttagcompound.getDouble("Amount"), nbttagcompound.getInt("Operation"));
++        } catch (Exception exception) {
++            GenericAttributes.k.warn("Unable to create attribute: {}", exception.getMessage());
++            return null;
++        }
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/IChunkLoader.java b/src/main/java/net/minecraft/server/IChunkLoader.java
+new file mode 100644
+index 000000000..c541fbb11
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/IChunkLoader.java
+@@ -0,0 +1,20 @@
++package net.minecraft.server;
++
++import java.io.IOException;
++import javax.annotation.Nullable;
++
++public interface IChunkLoader {
++
++    @Nullable
++    Chunk a(World world, int i, int j) throws IOException;
++
++    void saveChunk(World world, Chunk chunk) throws IOException, ExceptionWorldConflict;
++
++    void b(World world, Chunk chunk) throws IOException;
++
++    void b();
++
++    void c();
++
++    boolean chunkExists(int i, int j);
++}
+diff --git a/src/main/java/net/minecraft/server/IntCache.java b/src/main/java/net/minecraft/server/IntCache.java
+new file mode 100644
+index 000000000..d916050e0
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/IntCache.java
+@@ -0,0 +1,63 @@
++package net.minecraft.server;
++
++import com.google.common.collect.Lists;
++import java.util.List;
++
++public class IntCache {
++
++    private static int a = 256;
++    private static final List<int[]> b = Lists.newArrayList();
++    private static final List<int[]> c = Lists.newArrayList();
++    private static final List<int[]> d = Lists.newArrayList();
++    private static final List<int[]> e = Lists.newArrayList();
++
++    public static synchronized int[] a(int i) {
++        int[] aint;
++
++        if (i <= 256) {
++            if (IntCache.b.isEmpty()) {
++                aint = new int[256];
++                IntCache.c.add(aint);
++                return aint;
++            } else {
++                aint = (int[]) IntCache.b.remove(IntCache.b.size() - 1);
++                IntCache.c.add(aint);
++                return aint;
++            }
++        } else if (i > IntCache.a) {
++            IntCache.a = i;
++            IntCache.d.clear();
++            IntCache.e.clear();
++            aint = new int[IntCache.a];
++            IntCache.e.add(aint);
++            return aint;
++        } else if (IntCache.d.isEmpty()) {
++            aint = new int[IntCache.a];
++            IntCache.e.add(aint);
++            return aint;
++        } else {
++            aint = (int[]) IntCache.d.remove(IntCache.d.size() - 1);
++            IntCache.e.add(aint);
++            return aint;
++        }
++    }
++
++    public static synchronized void a() {
++        if (!IntCache.d.isEmpty()) {
++            IntCache.d.remove(IntCache.d.size() - 1);
++        }
++
++        if (!IntCache.b.isEmpty()) {
++            IntCache.b.remove(IntCache.b.size() - 1);
++        }
++
++        IntCache.d.addAll(IntCache.e);
++        IntCache.b.addAll(IntCache.c);
++        IntCache.e.clear();
++        IntCache.c.clear();
++    }
++
++    public static synchronized String b() {
++        return "cache: " + IntCache.d.size() + ", tcache: " + IntCache.b.size() + ", allocated: " + IntCache.e.size() + ", tallocated: " + IntCache.c.size();
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/ItemDoor.java b/src/main/java/net/minecraft/server/ItemDoor.java
+new file mode 100644
+index 000000000..761b19dda
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/ItemDoor.java
+@@ -0,0 +1,68 @@
++package net.minecraft.server;
++
++public class ItemDoor extends Item {
++
++    private final Block a;
++
++    public ItemDoor(Block block) {
++        this.a = block;
++        this.b(CreativeModeTab.d);
++    }
++
++    public EnumInteractionResult a(EntityHuman entityhuman, World world, BlockPosition blockposition, EnumHand enumhand, EnumDirection enumdirection, float f, float f1, float f2) {
++        if (enumdirection != EnumDirection.UP) {
++            return EnumInteractionResult.FAIL;
++        } else {
++            IBlockData iblockdata = world.getType(blockposition);
++            Block block = iblockdata.getBlock();
++
++            if (!block.a((IBlockAccess) world, blockposition)) {
++                blockposition = blockposition.shift(enumdirection);
++            }
++
++            ItemStack itemstack = entityhuman.b(enumhand);
++
++            if (entityhuman.a(blockposition, enumdirection, itemstack) && this.a.canPlace(world, blockposition)) {
++                EnumDirection enumdirection1 = EnumDirection.fromAngle((double) entityhuman.yaw);
++                int i = enumdirection1.getAdjacentX();
++                int j = enumdirection1.getAdjacentZ();
++                boolean flag = i < 0 && f2 < 0.5F || i > 0 && f2 > 0.5F || j < 0 && f > 0.5F || j > 0 && f < 0.5F;
++
++                a(world, blockposition, enumdirection1, this.a, flag);
++                SoundEffectType soundeffecttype = this.a.getStepSound();
++
++                world.a(entityhuman, blockposition, soundeffecttype.e(), SoundCategory.BLOCKS, (soundeffecttype.a() + 1.0F) / 2.0F, soundeffecttype.b() * 0.8F);
++                itemstack.subtract(1);
++                return EnumInteractionResult.SUCCESS;
++            } else {
++                return EnumInteractionResult.FAIL;
++            }
++        }
++    }
++
++    public static void a(World world, BlockPosition blockposition, EnumDirection enumdirection, Block block, boolean flag) {
++        BlockPosition blockposition1 = blockposition.shift(enumdirection.e());
++        BlockPosition blockposition2 = blockposition.shift(enumdirection.f());
++        int i = (world.getType(blockposition2).l() ? 1 : 0) + (world.getType(blockposition2.up()).l() ? 1 : 0);
++        int j = (world.getType(blockposition1).l() ? 1 : 0) + (world.getType(blockposition1.up()).l() ? 1 : 0);
++        boolean flag1 = world.getType(blockposition2).getBlock() == block || world.getType(blockposition2.up()).getBlock() == block;
++        boolean flag2 = world.getType(blockposition1).getBlock() == block || world.getType(blockposition1.up()).getBlock() == block;
++
++        if ((!flag1 || flag2) && j <= i) {
++            if (flag2 && !flag1 || j < i) {
++                flag = false;
++            }
++        } else {
++            flag = true;
++        }
++
++        BlockPosition blockposition3 = blockposition.up();
++        boolean flag3 = world.isBlockIndirectlyPowered(blockposition) || world.isBlockIndirectlyPowered(blockposition3);
++        IBlockData iblockdata = block.getBlockData().set(BlockDoor.FACING, enumdirection).set(BlockDoor.HINGE, flag ? BlockDoor.EnumDoorHinge.RIGHT : BlockDoor.EnumDoorHinge.LEFT).set(BlockDoor.POWERED, Boolean.valueOf(flag3)).set(BlockDoor.OPEN, Boolean.valueOf(flag3));
++
++        world.setTypeAndData(blockposition, iblockdata.set(BlockDoor.HALF, BlockDoor.EnumDoorHalf.LOWER), 2);
++        world.setTypeAndData(blockposition3, iblockdata.set(BlockDoor.HALF, BlockDoor.EnumDoorHalf.UPPER), 2);
++        world.applyPhysics(blockposition, block, false);
++        world.applyPhysics(blockposition3, block, false);
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/NBTCompressedStreamTools.java b/src/main/java/net/minecraft/server/NBTCompressedStreamTools.java
+new file mode 100644
+index 000000000..345d763d9
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/NBTCompressedStreamTools.java
+@@ -0,0 +1,89 @@
++package net.minecraft.server;
++
++import java.io.BufferedInputStream;
++import java.io.BufferedOutputStream;
++import java.io.DataInput;
++import java.io.DataInputStream;
++import java.io.DataOutput;
++import java.io.DataOutputStream;
++import java.io.IOException;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.util.zip.GZIPInputStream;
++import java.util.zip.GZIPOutputStream;
++
++public class NBTCompressedStreamTools {
++
++    public static NBTTagCompound a(InputStream inputstream) throws IOException {
++        DataInputStream datainputstream = new DataInputStream(new BufferedInputStream(new GZIPInputStream(inputstream)));
++
++        NBTTagCompound nbttagcompound;
++
++        try {
++            nbttagcompound = a((DataInput) datainputstream, NBTReadLimiter.a);
++        } finally {
++            datainputstream.close();
++        }
++
++        return nbttagcompound;
++    }
++
++    public static void a(NBTTagCompound nbttagcompound, OutputStream outputstream) throws IOException {
++        DataOutputStream dataoutputstream = new DataOutputStream(new BufferedOutputStream(new GZIPOutputStream(outputstream)));
++
++        try {
++            a(nbttagcompound, (DataOutput) dataoutputstream);
++        } finally {
++            dataoutputstream.close();
++        }
++
++    }
++
++    public static NBTTagCompound a(DataInputStream datainputstream) throws IOException {
++        return a((DataInput) datainputstream, NBTReadLimiter.a);
++    }
++
++    public static NBTTagCompound a(DataInput datainput, NBTReadLimiter nbtreadlimiter) throws IOException {
++        NBTBase nbtbase = a(datainput, 0, nbtreadlimiter);
++
++        if (nbtbase instanceof NBTTagCompound) {
++            return (NBTTagCompound) nbtbase;
++        } else {
++            throw new IOException("Root tag must be a named compound tag");
++        }
++    }
++
++    public static void a(NBTTagCompound nbttagcompound, DataOutput dataoutput) throws IOException {
++        a((NBTBase) nbttagcompound, dataoutput);
++    }
++
++    private static void a(NBTBase nbtbase, DataOutput dataoutput) throws IOException {
++        dataoutput.writeByte(nbtbase.getTypeId());
++        if (nbtbase.getTypeId() != 0) {
++            dataoutput.writeUTF("");
++            nbtbase.write(dataoutput);
++        }
++    }
++
++    private static NBTBase a(DataInput datainput, int i, NBTReadLimiter nbtreadlimiter) throws IOException {
++        byte b0 = datainput.readByte();
++
++        if (b0 == 0) {
++            return new NBTTagEnd();
++        } else {
++            datainput.readUTF();
++            NBTBase nbtbase = NBTBase.createTag(b0);
++
++            try {
++                nbtbase.load(datainput, i, nbtreadlimiter);
++                return nbtbase;
++            } catch (IOException ioexception) {
++                CrashReport crashreport = CrashReport.a(ioexception, "Loading NBT data");
++                CrashReportSystemDetails crashreportsystemdetails = crashreport.a("NBT Tag");
++
++                crashreportsystemdetails.a("Tag type", (Object) Byte.valueOf(b0));
++                throw new ReportedException(crashreport);
++            }
++        }
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/NBTTagByteArray.java b/src/main/java/net/minecraft/server/NBTTagByteArray.java
+new file mode 100644
+index 000000000..e880df5a6
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/NBTTagByteArray.java
+@@ -0,0 +1,85 @@
++package net.minecraft.server;
++
++import java.io.DataInput;
++import java.io.DataOutput;
++import java.io.IOException;
++import java.util.Arrays;
++import java.util.List;
++
++public class NBTTagByteArray extends NBTBase {
++
++    private byte[] data;
++
++    NBTTagByteArray() {}
++
++    public NBTTagByteArray(byte[] abyte) {
++        this.data = abyte;
++    }
++
++    public NBTTagByteArray(List<Byte> list) {
++        this(a(list));
++    }
++
++    private static byte[] a(List<Byte> list) {
++        byte[] abyte = new byte[list.size()];
++
++        for (int i = 0; i < list.size(); ++i) {
++            Byte obyte = (Byte) list.get(i);
++
++            abyte[i] = obyte == null ? 0 : obyte.byteValue();
++        }
++
++        return abyte;
++    }
++
++    void write(DataOutput dataoutput) throws IOException {
++        dataoutput.writeInt(this.data.length);
++        dataoutput.write(this.data);
++    }
++
++    void load(DataInput datainput, int i, NBTReadLimiter nbtreadlimiter) throws IOException {
++        nbtreadlimiter.a(192L);
++        int j = datainput.readInt();
++
++        nbtreadlimiter.a((long) (8 * j));
++        this.data = new byte[j];
++        datainput.readFully(this.data);
++    }
++
++    public byte getTypeId() {
++        return (byte) 7;
++    }
++
++    public String toString() {
++        StringBuilder stringbuilder = new StringBuilder("[B;");
++
++        for (int i = 0; i < this.data.length; ++i) {
++            if (i != 0) {
++                stringbuilder.append(',');
++            }
++
++            stringbuilder.append(this.data[i]).append('B');
++        }
++
++        return stringbuilder.append(']').toString();
++    }
++
++    public NBTBase clone() {
++        byte[] abyte = new byte[this.data.length];
++
++        System.arraycopy(this.data, 0, abyte, 0, this.data.length);
++        return new NBTTagByteArray(abyte);
++    }
++
++    public boolean equals(Object object) {
++        return super.equals(object) && Arrays.equals(this.data, ((NBTTagByteArray) object).data);
++    }
++
++    public int hashCode() {
++        return super.hashCode() ^ Arrays.hashCode(this.data);
++    }
++
++    public byte[] c() {
++        return this.data;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/NBTTagIntArray.java b/src/main/java/net/minecraft/server/NBTTagIntArray.java
+new file mode 100644
+index 000000000..1e2056496
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/NBTTagIntArray.java
+@@ -0,0 +1,101 @@
++package net.minecraft.server;
++
++import java.io.DataInput;
++import java.io.DataOutput;
++import java.io.IOException;
++import java.util.Arrays;
++import java.util.List;
++
++public class NBTTagIntArray extends NBTBase {
++
++    private int[] data;
++
++    NBTTagIntArray() {}
++
++    public NBTTagIntArray(int[] aint) {
++        this.data = aint;
++    }
++
++    public NBTTagIntArray(List<Integer> list) {
++        this(a(list));
++    }
++
++    private static int[] a(List<Integer> list) {
++        int[] aint = new int[list.size()];
++
++        for (int i = 0; i < list.size(); ++i) {
++            Integer integer = (Integer) list.get(i);
++
++            aint[i] = integer == null ? 0 : integer.intValue();
++        }
++
++        return aint;
++    }
++
++    void write(DataOutput dataoutput) throws IOException {
++        dataoutput.writeInt(this.data.length);
++        int[] aint = this.data;
++        int i = aint.length;
++
++        for (int j = 0; j < i; ++j) {
++            int k = aint[j];
++
++            dataoutput.writeInt(k);
++        }
++
++    }
++
++    void load(DataInput datainput, int i, NBTReadLimiter nbtreadlimiter) throws IOException {
++        nbtreadlimiter.a(192L);
++        int j = datainput.readInt();
++
++        nbtreadlimiter.a((long) (32 * j));
++        this.data = new int[j];
++
++        for (int k = 0; k < j; ++k) {
++            this.data[k] = datainput.readInt();
++        }
++
++    }
++
++    public byte getTypeId() {
++        return (byte) 11;
++    }
++
++    public String toString() {
++        StringBuilder stringbuilder = new StringBuilder("[I;");
++
++        for (int i = 0; i < this.data.length; ++i) {
++            if (i != 0) {
++                stringbuilder.append(',');
++            }
++
++            stringbuilder.append(this.data[i]);
++        }
++
++        return stringbuilder.append(']').toString();
++    }
++
++    public NBTTagIntArray c() {
++        int[] aint = new int[this.data.length];
++
++        System.arraycopy(this.data, 0, aint, 0, this.data.length);
++        return new NBTTagIntArray(aint);
++    }
++
++    public boolean equals(Object object) {
++        return super.equals(object) && Arrays.equals(this.data, ((NBTTagIntArray) object).data);
++    }
++
++    public int hashCode() {
++        return super.hashCode() ^ Arrays.hashCode(this.data);
++    }
++
++    public int[] d() {
++        return this.data;
++    }
++
++    public NBTBase clone() {
++        return this.c();
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/NibbleArray.java b/src/main/java/net/minecraft/server/NibbleArray.java
+new file mode 100644
+index 000000000..1509c772e
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/NibbleArray.java
+@@ -0,0 +1,58 @@
++package net.minecraft.server;
++
++public class NibbleArray {
++
++    private final byte[] a;
++
++    public NibbleArray() {
++        this.a = new byte[2048];
++    }
++
++    public NibbleArray(byte[] abyte) {
++        this.a = abyte;
++        if (abyte.length != 2048) {
++            throw new IllegalArgumentException("ChunkNibbleArrays should be 2048 bytes not: " + abyte.length);
++        }
++    }
++
++    public int a(int i, int j, int k) {
++        return this.a(this.b(i, j, k));
++    }
++
++    public void a(int i, int j, int k, int l) {
++        this.a(this.b(i, j, k), l);
++    }
++
++    private int b(int i, int j, int k) {
++        return j << 8 | k << 4 | i;
++    }
++
++    public int a(int i) {
++        int j = this.c(i);
++
++        return this.b(i) ? this.a[j] & 15 : this.a[j] >> 4 & 15;
++    }
++
++    public void a(int i, int j) {
++        int k = this.c(i);
++
++        if (this.b(i)) {
++            this.a[k] = (byte) (this.a[k] & 240 | j & 15);
++        } else {
++            this.a[k] = (byte) (this.a[k] & 15 | (j & 15) << 4);
++        }
++
++    }
++
++    private boolean b(int i) {
++        return (i & 1) == 0;
++    }
++
++    private int c(int i) {
++        return i >> 1;
++    }
++
++    public byte[] asBytes() {
++        return this.a;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/PacketHandshakingInSetProtocol.java b/src/main/java/net/minecraft/server/PacketHandshakingInSetProtocol.java
+new file mode 100644
+index 000000000..1cb9d60dd
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/PacketHandshakingInSetProtocol.java
+@@ -0,0 +1,39 @@
++package net.minecraft.server;
++
++import java.io.IOException;
++
++public class PacketHandshakingInSetProtocol implements Packet<PacketHandshakingInListener> {
++
++    private int a;
++    public String hostname;
++    public int port;
++    private EnumProtocol d;
++
++    public PacketHandshakingInSetProtocol() {}
++
++    public void a(PacketDataSerializer packetdataserializer) throws IOException {
++        this.a = packetdataserializer.g();
++        this.hostname = packetdataserializer.e(255);
++        this.port = packetdataserializer.readUnsignedShort();
++        this.d = EnumProtocol.a(packetdataserializer.g());
++    }
++
++    public void b(PacketDataSerializer packetdataserializer) throws IOException {
++        packetdataserializer.d(this.a);
++        packetdataserializer.a(this.hostname);
++        packetdataserializer.writeShort(this.port);
++        packetdataserializer.d(this.d.a());
++    }
++
++    public void a(PacketHandshakingInListener packethandshakinginlistener) {
++        packethandshakinginlistener.a(this);
++    }
++
++    public EnumProtocol a() {
++        return this.d;
++    }
++
++    public int b() {
++        return this.a;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/PacketPlayInArmAnimation.java b/src/main/java/net/minecraft/server/PacketPlayInArmAnimation.java
+new file mode 100644
+index 000000000..cb0356ee8
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/PacketPlayInArmAnimation.java
+@@ -0,0 +1,30 @@
++package net.minecraft.server;
++
++import java.io.IOException;
++
++public class PacketPlayInArmAnimation implements Packet<PacketListenerPlayIn> {
++
++    private EnumHand a;
++
++    public PacketPlayInArmAnimation() {}
++
++    public PacketPlayInArmAnimation(EnumHand enumhand) {
++        this.a = enumhand;
++    }
++
++    public void a(PacketDataSerializer packetdataserializer) throws IOException {
++        this.a = (EnumHand) packetdataserializer.a(EnumHand.class);
++    }
++
++    public void b(PacketDataSerializer packetdataserializer) throws IOException {
++        packetdataserializer.a((Enum) this.a);
++    }
++
++    public void a(PacketListenerPlayIn packetlistenerplayin) {
++        packetlistenerplayin.a(this);
++    }
++
++    public EnumHand a() {
++        return this.a;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/PacketPlayInBlockPlace.java b/src/main/java/net/minecraft/server/PacketPlayInBlockPlace.java
+new file mode 100644
+index 000000000..43310e8a3
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/PacketPlayInBlockPlace.java
+@@ -0,0 +1,30 @@
++package net.minecraft.server;
++
++import java.io.IOException;
++
++public class PacketPlayInBlockPlace implements Packet<PacketListenerPlayIn> {
++
++    private EnumHand a;
++
++    public PacketPlayInBlockPlace() {}
++
++    public PacketPlayInBlockPlace(EnumHand enumhand) {
++        this.a = enumhand;
++    }
++
++    public void a(PacketDataSerializer packetdataserializer) throws IOException {
++        this.a = (EnumHand) packetdataserializer.a(EnumHand.class);
++    }
++
++    public void b(PacketDataSerializer packetdataserializer) throws IOException {
++        packetdataserializer.a((Enum) this.a);
++    }
++
++    public void a(PacketListenerPlayIn packetlistenerplayin) {
++        packetlistenerplayin.a(this);
++    }
++
++    public EnumHand a() {
++        return this.a;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/PacketPlayInChat.java b/src/main/java/net/minecraft/server/PacketPlayInChat.java
+new file mode 100644
+index 000000000..3dd4e28c2
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/PacketPlayInChat.java
+@@ -0,0 +1,34 @@
++package net.minecraft.server;
++
++import java.io.IOException;
++
++public class PacketPlayInChat implements Packet<PacketListenerPlayIn> {
++
++    private String a;
++
++    public PacketPlayInChat() {}
++
++    public PacketPlayInChat(String s) {
++        if (s.length() > 256) {
++            s = s.substring(0, 256);
++        }
++
++        this.a = s;
++    }
++
++    public void a(PacketDataSerializer packetdataserializer) throws IOException {
++        this.a = packetdataserializer.e(256);
++    }
++
++    public void b(PacketDataSerializer packetdataserializer) throws IOException {
++        packetdataserializer.a(this.a);
++    }
++
++    public void a(PacketListenerPlayIn packetlistenerplayin) {
++        packetlistenerplayin.a(this);
++    }
++
++    public String a() {
++        return this.a;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/PacketPlayInUseItem.java b/src/main/java/net/minecraft/server/PacketPlayInUseItem.java
+new file mode 100644
+index 000000000..bdcda81cc
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/PacketPlayInUseItem.java
+@@ -0,0 +1,61 @@
++package net.minecraft.server;
++
++import java.io.IOException;
++
++public class PacketPlayInUseItem implements Packet<PacketListenerPlayIn> {
++
++    private BlockPosition a;
++    private EnumDirection b;
++    private EnumHand c;
++    private float d;
++    private float e;
++    private float f;
++
++    public PacketPlayInUseItem() {}
++
++    public void a(PacketDataSerializer packetdataserializer) throws IOException {
++        this.a = packetdataserializer.e();
++        this.b = (EnumDirection) packetdataserializer.a(EnumDirection.class);
++        this.c = (EnumHand) packetdataserializer.a(EnumHand.class);
++        this.d = packetdataserializer.readFloat();
++        this.e = packetdataserializer.readFloat();
++        this.f = packetdataserializer.readFloat();
++    }
++
++    public void b(PacketDataSerializer packetdataserializer) throws IOException {
++        packetdataserializer.a(this.a);
++        packetdataserializer.a((Enum) this.b);
++        packetdataserializer.a((Enum) this.c);
++        packetdataserializer.writeFloat(this.d);
++        packetdataserializer.writeFloat(this.e);
++        packetdataserializer.writeFloat(this.f);
++    }
++
++    public void a(PacketListenerPlayIn packetlistenerplayin) {
++        packetlistenerplayin.a(this);
++    }
++
++    public BlockPosition a() {
++        return this.a;
++    }
++
++    public EnumDirection b() {
++        return this.b;
++    }
++
++    public EnumHand c() {
++        return this.c;
++    }
++
++    public float d() {
++        return this.d;
++    }
++
++    public float e() {
++        return this.e;
++    }
++
++    public float f() {
++        return this.f;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/PacketPlayOutChat.java b/src/main/java/net/minecraft/server/PacketPlayOutChat.java
+new file mode 100644
+index 000000000..b1fddee73
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/PacketPlayOutChat.java
+@@ -0,0 +1,42 @@
++package net.minecraft.server;
++
++import java.io.IOException;
++
++public class PacketPlayOutChat implements Packet<PacketListenerPlayOut> {
++
++    private IChatBaseComponent a;
++    private ChatMessageType b;
++
++    public PacketPlayOutChat() {}
++
++    public PacketPlayOutChat(IChatBaseComponent ichatbasecomponent) {
++        this(ichatbasecomponent, ChatMessageType.SYSTEM);
++    }
++
++    public PacketPlayOutChat(IChatBaseComponent ichatbasecomponent, ChatMessageType chatmessagetype) {
++        this.a = ichatbasecomponent;
++        this.b = chatmessagetype;
++    }
++
++    public void a(PacketDataSerializer packetdataserializer) throws IOException {
++        this.a = packetdataserializer.f();
++        this.b = ChatMessageType.a(packetdataserializer.readByte());
++    }
++
++    public void b(PacketDataSerializer packetdataserializer) throws IOException {
++        packetdataserializer.a(this.a);
++        packetdataserializer.writeByte(this.b.a());
++    }
++
++    public void a(PacketListenerPlayOut packetlistenerplayout) {
++        packetlistenerplayout.a(this);
++    }
++
++    public boolean b() {
++        return this.b == ChatMessageType.SYSTEM || this.b == ChatMessageType.GAME_INFO;
++    }
++
++    public ChatMessageType c() {
++        return this.b;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/PersistentCollection.java b/src/main/java/net/minecraft/server/PersistentCollection.java
+new file mode 100644
+index 000000000..fe59b758f
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/PersistentCollection.java
+@@ -0,0 +1,182 @@
++package net.minecraft.server;
++
++import com.google.common.collect.Lists;
++import com.google.common.collect.Maps;
++import java.io.DataInputStream;
++import java.io.DataOutput;
++import java.io.DataOutputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileOutputStream;
++import java.io.InputStream;
++import java.io.OutputStream;
++import java.util.Iterator;
++import java.util.List;
++import java.util.Map;
++import javax.annotation.Nullable;
++
++public class PersistentCollection {
++
++    private final IDataManager b;
++    protected Map<String, PersistentBase> a = Maps.newHashMap();
++    private final List<PersistentBase> c = Lists.newArrayList();
++    private final Map<String, Short> d = Maps.newHashMap();
++
++    public PersistentCollection(IDataManager idatamanager) {
++        this.b = idatamanager;
++        this.b();
++    }
++
++    @Nullable
++    public PersistentBase get(Class<? extends PersistentBase> oclass, String s) {
++        PersistentBase persistentbase = (PersistentBase) this.a.get(s);
++
++        if (persistentbase != null) {
++            return persistentbase;
++        } else {
++            if (this.b != null) {
++                try {
++                    File file = this.b.getDataFile(s);
++
++                    if (file != null && file.exists()) {
++                        try {
++                            persistentbase = (PersistentBase) oclass.getConstructor(new Class[] { String.class}).newInstance(new Object[] { s});
++                        } catch (Exception exception) {
++                            throw new RuntimeException("Failed to instantiate " + oclass, exception);
++                        }
++
++                        FileInputStream fileinputstream = new FileInputStream(file);
++                        NBTTagCompound nbttagcompound = NBTCompressedStreamTools.a((InputStream) fileinputstream);
++
++                        fileinputstream.close();
++                        persistentbase.a(nbttagcompound.getCompound("data"));
++                    }
++                } catch (Exception exception1) {
++                    exception1.printStackTrace();
++                }
++            }
++
++            if (persistentbase != null) {
++                this.a.put(s, persistentbase);
++                this.c.add(persistentbase);
++            }
++
++            return persistentbase;
++        }
++    }
++
++    public void a(String s, PersistentBase persistentbase) {
++        if (this.a.containsKey(s)) {
++            this.c.remove(this.a.remove(s));
++        }
++
++        this.a.put(s, persistentbase);
++        this.c.add(persistentbase);
++    }
++
++    public void a() {
++        for (int i = 0; i < this.c.size(); ++i) {
++            PersistentBase persistentbase = (PersistentBase) this.c.get(i);
++
++            if (persistentbase.d()) {
++                this.a(persistentbase);
++                persistentbase.a(false);
++            }
++        }
++
++    }
++
++    private void a(PersistentBase persistentbase) {
++        if (this.b != null) {
++            try {
++                File file = this.b.getDataFile(persistentbase.id);
++
++                if (file != null) {
++                    NBTTagCompound nbttagcompound = new NBTTagCompound();
++
++                    nbttagcompound.set("data", persistentbase.b(new NBTTagCompound()));
++                    FileOutputStream fileoutputstream = new FileOutputStream(file);
++
++                    NBTCompressedStreamTools.a(nbttagcompound, (OutputStream) fileoutputstream);
++                    fileoutputstream.close();
++                }
++            } catch (Exception exception) {
++                exception.printStackTrace();
++            }
++
++        }
++    }
++
++    private void b() {
++        try {
++            this.d.clear();
++            if (this.b == null) {
++                return;
++            }
++
++            File file = this.b.getDataFile("idcounts");
++
++            if (file != null && file.exists()) {
++                DataInputStream datainputstream = new DataInputStream(new FileInputStream(file));
++                NBTTagCompound nbttagcompound = NBTCompressedStreamTools.a(datainputstream);
++
++                datainputstream.close();
++                Iterator iterator = nbttagcompound.c().iterator();
++
++                while (iterator.hasNext()) {
++                    String s = (String) iterator.next();
++                    NBTBase nbtbase = nbttagcompound.get(s);
++
++                    if (nbtbase instanceof NBTTagShort) {
++                        NBTTagShort nbttagshort = (NBTTagShort) nbtbase;
++                        short short0 = nbttagshort.f();
++
++                        this.d.put(s, Short.valueOf(short0));
++                    }
++                }
++            }
++        } catch (Exception exception) {
++            exception.printStackTrace();
++        }
++
++    }
++
++    public int a(String s) {
++        Short oshort = (Short) this.d.get(s);
++
++        if (oshort == null) {
++            oshort = Short.valueOf((short) 0);
++        } else {
++            oshort = Short.valueOf((short) (oshort.shortValue() + 1));
++        }
++
++        this.d.put(s, oshort);
++        if (this.b == null) {
++            return oshort.shortValue();
++        } else {
++            try {
++                File file = this.b.getDataFile("idcounts");
++
++                if (file != null) {
++                    NBTTagCompound nbttagcompound = new NBTTagCompound();
++                    Iterator iterator = this.d.keySet().iterator();
++
++                    while (iterator.hasNext()) {
++                        String s1 = (String) iterator.next();
++
++                        nbttagcompound.setShort(s1, ((Short) this.d.get(s1)).shortValue());
++                    }
++
++                    DataOutputStream dataoutputstream = new DataOutputStream(new FileOutputStream(file));
++
++                    NBTCompressedStreamTools.a(nbttagcompound, (DataOutput) dataoutputstream);
++                    dataoutputstream.close();
++                }
++            } catch (Exception exception) {
++                exception.printStackTrace();
++            }
++
++            return oshort.shortValue();
++        }
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/ServerConnection.java b/src/main/java/net/minecraft/server/ServerConnection.java
+new file mode 100644
+index 000000000..7e703685e
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/ServerConnection.java
+@@ -0,0 +1,174 @@
++package net.minecraft.server;
++
++import com.google.common.collect.Lists;
++import com.google.common.util.concurrent.ThreadFactoryBuilder;
++import io.netty.bootstrap.ServerBootstrap;
++import io.netty.channel.Channel;
++import io.netty.channel.ChannelException;
++import io.netty.channel.ChannelFuture;
++import io.netty.channel.ChannelInitializer;
++import io.netty.channel.ChannelOption;
++import io.netty.channel.EventLoopGroup;
++import io.netty.channel.epoll.Epoll;
++import io.netty.channel.epoll.EpollEventLoopGroup;
++import io.netty.channel.epoll.EpollServerSocketChannel;
++import io.netty.channel.local.LocalEventLoopGroup;
++import io.netty.channel.nio.NioEventLoopGroup;
++import io.netty.channel.socket.nio.NioServerSocketChannel;
++import io.netty.handler.timeout.ReadTimeoutHandler;
++import io.netty.util.concurrent.Future;
++import io.netty.util.concurrent.GenericFutureListener;
++import java.io.IOException;
++import java.net.InetAddress;
++import java.util.Collections;
++import java.util.Iterator;
++import java.util.List;
++import org.apache.logging.log4j.LogManager;
++import org.apache.logging.log4j.Logger;
++
++public class ServerConnection {
++
++    private static final Logger e = LogManager.getLogger();
++    public static final LazyInitVar<NioEventLoopGroup> a = new LazyInitVar() {
++        protected NioEventLoopGroup a() {
++            return new NioEventLoopGroup(0, (new ThreadFactoryBuilder()).setNameFormat("Netty Server IO #%d").setDaemon(true).build());
++        }
++
++        protected Object init() {
++            return this.a();
++        }
++    };
++    public static final LazyInitVar<EpollEventLoopGroup> b = new LazyInitVar() {
++        protected EpollEventLoopGroup a() {
++            return new EpollEventLoopGroup(0, (new ThreadFactoryBuilder()).setNameFormat("Netty Epoll Server IO #%d").setDaemon(true).build());
++        }
++
++        protected Object init() {
++            return this.a();
++        }
++    };
++    public static final LazyInitVar<LocalEventLoopGroup> c = new LazyInitVar() {
++        protected LocalEventLoopGroup a() {
++            return new LocalEventLoopGroup(0, (new ThreadFactoryBuilder()).setNameFormat("Netty Local Server IO #%d").setDaemon(true).build());
++        }
++
++        protected Object init() {
++            return this.a();
++        }
++    };
++    private final MinecraftServer f;
++    public volatile boolean d;
++    private final List<ChannelFuture> g = Collections.synchronizedList(Lists.newArrayList());
++    private final List<NetworkManager> h = Collections.synchronizedList(Lists.newArrayList());
++
++    public ServerConnection(MinecraftServer minecraftserver) {
++        this.f = minecraftserver;
++        this.d = true;
++    }
++
++    public void a(InetAddress inetaddress, int i) throws IOException {
++        List list = this.g;
++
++        synchronized (this.g) {
++            Class oclass;
++            LazyInitVar lazyinitvar;
++
++            if (Epoll.isAvailable() && this.f.af()) {
++                oclass = EpollServerSocketChannel.class;
++                lazyinitvar = ServerConnection.b;
++                ServerConnection.e.info("Using epoll channel type");
++            } else {
++                oclass = NioServerSocketChannel.class;
++                lazyinitvar = ServerConnection.a;
++                ServerConnection.e.info("Using default channel type");
++            }
++
++            this.g.add(((ServerBootstrap) ((ServerBootstrap) (new ServerBootstrap()).channel(oclass)).childHandler(new ChannelInitializer() {
++                protected void initChannel(Channel channel) throws Exception {
++                    try {
++                        channel.config().setOption(ChannelOption.TCP_NODELAY, Boolean.valueOf(true));
++                    } catch (ChannelException channelexception) {
++                        ;
++                    }
++
++                    channel.pipeline().addLast("timeout", new ReadTimeoutHandler(30)).addLast("legacy_query", new LegacyPingHandler(ServerConnection.this)).addLast("splitter", new PacketSplitter()).addLast("decoder", new PacketDecoder(EnumProtocolDirection.SERVERBOUND)).addLast("prepender", new PacketPrepender()).addLast("encoder", new PacketEncoder(EnumProtocolDirection.CLIENTBOUND));
++                    NetworkManager networkmanager = new NetworkManager(EnumProtocolDirection.SERVERBOUND);
++
++                    ServerConnection.this.h.add(networkmanager);
++                    channel.pipeline().addLast("packet_handler", networkmanager);
++                    networkmanager.setPacketListener(new HandshakeListener(ServerConnection.this.f, networkmanager));
++                }
++            }).group((EventLoopGroup) lazyinitvar.c()).localAddress(inetaddress, i)).bind().syncUninterruptibly());
++        }
++    }
++
++    public void b() {
++        this.d = false;
++        Iterator iterator = this.g.iterator();
++
++        while (iterator.hasNext()) {
++            ChannelFuture channelfuture = (ChannelFuture) iterator.next();
++
++            try {
++                channelfuture.channel().close().sync();
++            } catch (InterruptedException interruptedexception) {
++                ServerConnection.e.error("Interrupted whilst closing channel");
++            }
++        }
++
++    }
++
++    public void c() {
++        List list = this.h;
++
++        synchronized (this.h) {
++            Iterator iterator = this.h.iterator();
++
++            while (iterator.hasNext()) {
++                final NetworkManager networkmanager = (NetworkManager) iterator.next();
++
++                if (!networkmanager.h()) {
++                    if (networkmanager.isConnected()) {
++                        try {
++                            networkmanager.a();
++                        } catch (Exception exception) {
++                            if (networkmanager.isLocal()) {
++                                CrashReport crashreport = CrashReport.a(exception, "Ticking memory connection");
++                                CrashReportSystemDetails crashreportsystemdetails = crashreport.a("Ticking connection");
++
++                                crashreportsystemdetails.a("Connection", new CrashReportCallable() {
++                                    public String a() throws Exception {
++                                        return networkmanager.toString();
++                                    }
++
++                                    public Object call() throws Exception {
++                                        return this.a();
++                                    }
++                                });
++                                throw new ReportedException(crashreport);
++                            }
++
++                            ServerConnection.e.warn("Failed to handle packet for {}", networkmanager.getSocketAddress(), exception);
++                            final ChatComponentText chatcomponenttext = new ChatComponentText("Internal server error");
++
++                            networkmanager.sendPacket(new PacketPlayOutKickDisconnect(chatcomponenttext), new GenericFutureListener() {
++                                public void operationComplete(Future future) throws Exception {
++                                    networkmanager.close(chatcomponenttext);
++                                }
++                            }, new GenericFutureListener[0]);
++                            networkmanager.stopReading();
++                        }
++                    } else {
++                        iterator.remove();
++                        networkmanager.handleDisconnection();
++                    }
++                }
++            }
++
++        }
++    }
++
++    public MinecraftServer d() {
++        return this.f;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/ServerStatisticManager.java b/src/main/java/net/minecraft/server/ServerStatisticManager.java
+new file mode 100644
+index 000000000..7360141ac
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/ServerStatisticManager.java
+@@ -0,0 +1,167 @@
++package net.minecraft.server;
++
++import com.google.common.collect.Maps;
++import com.google.common.collect.Sets;
++import com.google.gson.JsonElement;
++import com.google.gson.JsonObject;
++import com.google.gson.JsonParseException;
++import com.google.gson.JsonParser;
++import java.io.File;
++import java.io.IOException;
++import java.lang.reflect.Constructor;
++import java.util.HashMap;
++import java.util.HashSet;
++import java.util.Iterator;
++import java.util.Map;
++import java.util.Set;
++import java.util.Map.Entry;
++import org.apache.commons.io.FileUtils;
++import org.apache.logging.log4j.LogManager;
++import org.apache.logging.log4j.Logger;
++
++public class ServerStatisticManager extends StatisticManager {
++
++    private static final Logger b = LogManager.getLogger();
++    private final MinecraftServer c;
++    private final File d;
++    private final Set<Statistic> e = Sets.newHashSet();
++    private int f = -300;
++
++    public ServerStatisticManager(MinecraftServer minecraftserver, File file) {
++        this.c = minecraftserver;
++        this.d = file;
++    }
++
++    public void a() {
++        if (this.d.isFile()) {
++            try {
++                this.a.clear();
++                this.a.putAll(this.a(FileUtils.readFileToString(this.d)));
++            } catch (IOException ioexception) {
++                ServerStatisticManager.b.error("Couldn\'t read statistics file {}", this.d, ioexception);
++            } catch (JsonParseException jsonparseexception) {
++                ServerStatisticManager.b.error("Couldn\'t parse statistics file {}", this.d, jsonparseexception);
++            }
++        }
++
++    }
++
++    public void b() {
++        try {
++            FileUtils.writeStringToFile(this.d, a(this.a));
++        } catch (IOException ioexception) {
++            ServerStatisticManager.b.error("Couldn\'t save stats", ioexception);
++        }
++
++    }
++
++    public void setStatistic(EntityHuman entityhuman, Statistic statistic, int i) {
++        super.setStatistic(entityhuman, statistic, i);
++        this.e.add(statistic);
++    }
++
++    private Set<Statistic> d() {
++        HashSet hashset = Sets.newHashSet(this.e);
++
++        this.e.clear();
++        return hashset;
++    }
++
++    public Map<Statistic, StatisticWrapper> a(String s) {
++        JsonElement jsonelement = (new JsonParser()).parse(s);
++
++        if (!jsonelement.isJsonObject()) {
++            return Maps.newHashMap();
++        } else {
++            JsonObject jsonobject = jsonelement.getAsJsonObject();
++            HashMap hashmap = Maps.newHashMap();
++            Iterator iterator = jsonobject.entrySet().iterator();
++
++            while (iterator.hasNext()) {
++                Entry entry = (Entry) iterator.next();
++                Statistic statistic = StatisticList.getStatistic((String) entry.getKey());
++
++                if (statistic != null) {
++                    StatisticWrapper statisticwrapper = new StatisticWrapper();
++
++                    if (((JsonElement) entry.getValue()).isJsonPrimitive() && ((JsonElement) entry.getValue()).getAsJsonPrimitive().isNumber()) {
++                        statisticwrapper.a(((JsonElement) entry.getValue()).getAsInt());
++                    } else if (((JsonElement) entry.getValue()).isJsonObject()) {
++                        JsonObject jsonobject1 = ((JsonElement) entry.getValue()).getAsJsonObject();
++
++                        if (jsonobject1.has("value") && jsonobject1.get("value").isJsonPrimitive() && jsonobject1.get("value").getAsJsonPrimitive().isNumber()) {
++                            statisticwrapper.a(jsonobject1.getAsJsonPrimitive("value").getAsInt());
++                        }
++
++                        if (jsonobject1.has("progress") && statistic.g() != null) {
++                            try {
++                                Constructor constructor = statistic.g().getConstructor(new Class[0]);
++                                IJsonStatistic ijsonstatistic = (IJsonStatistic) constructor.newInstance(new Object[0]);
++
++                                ijsonstatistic.a(jsonobject1.get("progress"));
++                                statisticwrapper.a(ijsonstatistic);
++                            } catch (Throwable throwable) {
++                                ServerStatisticManager.b.warn("Invalid statistic progress in {}", this.d, throwable);
++                            }
++                        }
++                    }
++
++                    hashmap.put(statistic, statisticwrapper);
++                } else {
++                    ServerStatisticManager.b.warn("Invalid statistic in {}: Don\'t know what {} is", this.d, entry.getKey());
++                }
++            }
++
++            return hashmap;
++        }
++    }
++
++    public static String a(Map<Statistic, StatisticWrapper> map) {
++        JsonObject jsonobject = new JsonObject();
++        Iterator iterator = map.entrySet().iterator();
++
++        while (iterator.hasNext()) {
++            Entry entry = (Entry) iterator.next();
++
++            if (((StatisticWrapper) entry.getValue()).b() != null) {
++                JsonObject jsonobject1 = new JsonObject();
++
++                jsonobject1.addProperty("value", Integer.valueOf(((StatisticWrapper) entry.getValue()).a()));
++
++                try {
++                    jsonobject1.add("progress", ((StatisticWrapper) entry.getValue()).b().a());
++                } catch (Throwable throwable) {
++                    ServerStatisticManager.b.warn("Couldn\'t save statistic {}: error serializing progress", ((Statistic) entry.getKey()).d(), throwable);
++                }
++
++                jsonobject.add(((Statistic) entry.getKey()).name, jsonobject1);
++            } else {
++                jsonobject.addProperty(((Statistic) entry.getKey()).name, Integer.valueOf(((StatisticWrapper) entry.getValue()).a()));
++            }
++        }
++
++        return jsonobject.toString();
++    }
++
++    public void c() {
++        this.e.addAll(this.a.keySet());
++    }
++
++    public void a(EntityPlayer entityplayer) {
++        int i = this.c.aq();
++        HashMap hashmap = Maps.newHashMap();
++
++        if (i - this.f > 300) {
++            this.f = i;
++            Iterator iterator = this.d().iterator();
++
++            while (iterator.hasNext()) {
++                Statistic statistic = (Statistic) iterator.next();
++
++                hashmap.put(statistic, Integer.valueOf(this.getStatisticValue(statistic)));
++            }
++        }
++
++        entityplayer.playerConnection.sendPacket(new PacketPlayOutStatistic(hashmap));
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/StructureGenerator.java b/src/main/java/net/minecraft/server/StructureGenerator.java
+new file mode 100644
+index 000000000..93e1c0097
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/StructureGenerator.java
+@@ -0,0 +1,244 @@
++package net.minecraft.server;
++
++import it.unimi.dsi.fastutil.longs.Long2ObjectMap;
++import it.unimi.dsi.fastutil.longs.Long2ObjectOpenHashMap;
++import it.unimi.dsi.fastutil.objects.ObjectIterator;
++import java.util.Iterator;
++import java.util.Random;
++import javax.annotation.Nullable;
++
++public abstract class StructureGenerator extends WorldGenBase {
++
++    private PersistentStructure a;
++    protected Long2ObjectMap<StructureStart> c = new Long2ObjectOpenHashMap(1024);
++
++    public StructureGenerator() {}
++
++    public abstract String a();
++
++    protected final synchronized void a(World world, final int i, final int j, int k, int l, ChunkSnapshot chunksnapshot) {
++        this.a(world);
++        if (!this.c.containsKey(ChunkCoordIntPair.a(i, j))) {
++            this.f.nextInt();
++
++            try {
++                if (this.a(i, j)) {
++                    StructureStart structurestart = this.b(i, j);
++
++                    this.c.put(ChunkCoordIntPair.a(i, j), structurestart);
++                    if (structurestart.a()) {
++                        this.a(i, j, structurestart);
++                    }
++                }
++
++            } catch (Throwable throwable) {
++                CrashReport crashreport = CrashReport.a(throwable, "Exception preparing structure feature");
++                CrashReportSystemDetails crashreportsystemdetails = crashreport.a("Feature being prepared");
++
++                crashreportsystemdetails.a("Is feature chunk", new CrashReportCallable() {
++                    public String a() throws Exception {
++                        return StructureGenerator.this.a(i, j) ? "True" : "False";
++                    }
++
++                    public Object call() throws Exception {
++                        return this.a();
++                    }
++                });
++                crashreportsystemdetails.a("Chunk location", (Object) String.format("%d,%d", new Object[] { Integer.valueOf(i), Integer.valueOf(j)}));
++                crashreportsystemdetails.a("Chunk pos hash", new CrashReportCallable() {
++                    public String a() throws Exception {
++                        return String.valueOf(ChunkCoordIntPair.a(i, j));
++                    }
++
++                    public Object call() throws Exception {
++                        return this.a();
++                    }
++                });
++                crashreportsystemdetails.a("Structure type", new CrashReportCallable() {
++                    public String a() throws Exception {
++                        return StructureGenerator.this.getClass().getCanonicalName();
++                    }
++
++                    public Object call() throws Exception {
++                        return this.a();
++                    }
++                });
++                throw new ReportedException(crashreport);
++            }
++        }
++    }
++
++    public synchronized boolean a(World world, Random random, ChunkCoordIntPair chunkcoordintpair) {
++        this.a(world);
++        int i = (chunkcoordintpair.x << 4) + 8;
++        int j = (chunkcoordintpair.z << 4) + 8;
++        boolean flag = false;
++        ObjectIterator objectiterator = this.c.values().iterator();
++
++        while (objectiterator.hasNext()) {
++            StructureStart structurestart = (StructureStart) objectiterator.next();
++
++            if (structurestart.a() && structurestart.a(chunkcoordintpair) && structurestart.b().a(i, j, i + 15, j + 15)) {
++                structurestart.a(world, random, new StructureBoundingBox(i, j, i + 15, j + 15));
++                structurestart.b(chunkcoordintpair);
++                flag = true;
++                this.a(structurestart.e(), structurestart.f(), structurestart);
++            }
++        }
++
++        return flag;
++    }
++
++    public boolean b(BlockPosition blockposition) {
++        if (this.g == null) {
++            return false;
++        } else {
++            this.a(this.g);
++            return this.c(blockposition) != null;
++        }
++    }
++
++    @Nullable
++    protected StructureStart c(BlockPosition blockposition) {
++        ObjectIterator objectiterator = this.c.values().iterator();
++
++        while (objectiterator.hasNext()) {
++            StructureStart structurestart = (StructureStart) objectiterator.next();
++
++            if (structurestart.a() && structurestart.b().b((BaseBlockPosition) blockposition)) {
++                Iterator iterator = structurestart.c().iterator();
++
++                while (iterator.hasNext()) {
++                    StructurePiece structurepiece = (StructurePiece) iterator.next();
++
++                    if (structurepiece.d().b((BaseBlockPosition) blockposition)) {
++                        return structurestart;
++                    }
++                }
++            }
++        }
++
++        return null;
++    }
++
++    public boolean a(World world, BlockPosition blockposition) {
++        this.a(world);
++        ObjectIterator objectiterator = this.c.values().iterator();
++
++        StructureStart structurestart;
++
++        do {
++            if (!objectiterator.hasNext()) {
++                return false;
++            }
++
++            structurestart = (StructureStart) objectiterator.next();
++        } while (!structurestart.a() || !structurestart.b().b((BaseBlockPosition) blockposition));
++
++        return true;
++    }
++
++    @Nullable
++    public abstract BlockPosition getNearestGeneratedFeature(World world, BlockPosition blockposition, boolean flag);
++
++    protected void a(World world) {
++        if (this.a == null && world != null) {
++            this.a = (PersistentStructure) world.a(PersistentStructure.class, this.a());
++            if (this.a == null) {
++                this.a = new PersistentStructure(this.a());
++                world.a(this.a(), (PersistentBase) this.a);
++            } else {
++                NBTTagCompound nbttagcompound = this.a.a();
++                Iterator iterator = nbttagcompound.c().iterator();
++
++                while (iterator.hasNext()) {
++                    String s = (String) iterator.next();
++                    NBTBase nbtbase = nbttagcompound.get(s);
++
++                    if (nbtbase.getTypeId() == 10) {
++                        NBTTagCompound nbttagcompound1 = (NBTTagCompound) nbtbase;
++
++                        if (nbttagcompound1.hasKey("ChunkX") && nbttagcompound1.hasKey("ChunkZ")) {
++                            int i = nbttagcompound1.getInt("ChunkX");
++                            int j = nbttagcompound1.getInt("ChunkZ");
++                            StructureStart structurestart = WorldGenFactory.a(nbttagcompound1, world);
++
++                            if (structurestart != null) {
++                                this.c.put(ChunkCoordIntPair.a(i, j), structurestart);
++                            }
++                        }
++                    }
++                }
++            }
++        }
++
++    }
++
++    private void a(int i, int j, StructureStart structurestart) {
++        this.a.a(structurestart.a(i, j), i, j);
++        this.a.c();
++    }
++
++    protected abstract boolean a(int i, int j);
++
++    protected abstract StructureStart b(int i, int j);
++
++    protected static BlockPosition a(World world, StructureGenerator structuregenerator, BlockPosition blockposition, int i, int j, int k, boolean flag, int l, boolean flag1) {
++        int i1 = blockposition.getX() >> 4;
++        int j1 = blockposition.getZ() >> 4;
++        int k1 = 0;
++
++        for (Random random = new Random(); k1 <= l; ++k1) {
++            for (int l1 = -k1; l1 <= k1; ++l1) {
++                boolean flag2 = l1 == -k1 || l1 == k1;
++
++                for (int i2 = -k1; i2 <= k1; ++i2) {
++                    boolean flag3 = i2 == -k1 || i2 == k1;
++
++                    if (flag2 || flag3) {
++                        int j2 = i1 + i * l1;
++                        int k2 = j1 + i * i2;
++
++                        if (j2 < 0) {
++                            j2 -= i - 1;
++                        }
++
++                        if (k2 < 0) {
++                            k2 -= i - 1;
++                        }
++
++                        int l2 = j2 / i;
++                        int i3 = k2 / i;
++                        Random random1 = world.a(l2, i3, k);
++
++                        l2 *= i;
++                        i3 *= i;
++                        if (flag) {
++                            l2 += (random1.nextInt(i - j) + random1.nextInt(i - j)) / 2;
++                            i3 += (random1.nextInt(i - j) + random1.nextInt(i - j)) / 2;
++                        } else {
++                            l2 += random1.nextInt(i - j);
++                            i3 += random1.nextInt(i - j);
++                        }
++
++                        WorldGenBase.a(world.getSeed(), random, l2, i3);
++                        random.nextInt();
++                        if (structuregenerator.a(l2, i3)) {
++                            if (!flag1 || !world.b(l2, i3)) {
++                                return new BlockPosition((l2 << 4) + 8, 64, (i3 << 4) + 8);
++                            }
++                        } else if (k1 == 0) {
++                            break;
++                        }
++                    }
++                }
++
++                if (k1 == 0) {
++                    break;
++                }
++            }
++        }
++
++        return null;
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/TileEntitySkull.java b/src/main/java/net/minecraft/server/TileEntitySkull.java
+new file mode 100644
+index 000000000..223e2ed2d
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/TileEntitySkull.java
+@@ -0,0 +1,152 @@
++package net.minecraft.server;
++
++import com.google.common.collect.Iterables;
++import com.mojang.authlib.GameProfile;
++import com.mojang.authlib.minecraft.MinecraftSessionService;
++import com.mojang.authlib.properties.Property;
++import java.util.UUID;
++import javax.annotation.Nullable;
++
++public class TileEntitySkull extends TileEntity implements ITickable {
++
++    private int a;
++    public int rotation;
++    private GameProfile g;
++    private int h;
++    private boolean i;
++    private static UserCache j;
++    private static MinecraftSessionService k;
++
++    public TileEntitySkull() {}
++
++    public static void a(UserCache usercache) {
++        TileEntitySkull.j = usercache;
++    }
++
++    public static void a(MinecraftSessionService minecraftsessionservice) {
++        TileEntitySkull.k = minecraftsessionservice;
++    }
++
++    public NBTTagCompound save(NBTTagCompound nbttagcompound) {
++        super.save(nbttagcompound);
++        nbttagcompound.setByte("SkullType", (byte) (this.a & 255));
++        nbttagcompound.setByte("Rot", (byte) (this.rotation & 255));
++        if (this.g != null) {
++            NBTTagCompound nbttagcompound1 = new NBTTagCompound();
++
++            GameProfileSerializer.serialize(nbttagcompound1, this.g);
++            nbttagcompound.set("Owner", nbttagcompound1);
++        }
++
++        return nbttagcompound;
++    }
++
++    public void load(NBTTagCompound nbttagcompound) {
++        super.load(nbttagcompound);
++        this.a = nbttagcompound.getByte("SkullType");
++        this.rotation = nbttagcompound.getByte("Rot");
++        if (this.a == 3) {
++            if (nbttagcompound.hasKeyOfType("Owner", 10)) {
++                this.g = GameProfileSerializer.deserialize(nbttagcompound.getCompound("Owner"));
++            } else if (nbttagcompound.hasKeyOfType("ExtraType", 8)) {
++                String s = nbttagcompound.getString("ExtraType");
++
++                if (!UtilColor.b(s)) {
++                    this.g = new GameProfile((UUID) null, s);
++                    this.i();
++                }
++            }
++        }
++
++    }
++
++    public void e() {
++        if (this.a == 5) {
++            if (this.world.isBlockIndirectlyPowered(this.position)) {
++                this.i = true;
++                ++this.h;
++            } else {
++                this.i = false;
++            }
++        }
++
++    }
++
++    @Nullable
++    public GameProfile getGameProfile() {
++        return this.g;
++    }
++
++    @Nullable
++    public PacketPlayOutTileEntityData getUpdatePacket() {
++        return new PacketPlayOutTileEntityData(this.position, 4, this.d());
++    }
++
++    public NBTTagCompound d() {
++        return this.save(new NBTTagCompound());
++    }
++
++    public void setSkullType(int i) {
++        this.a = i;
++        this.g = null;
++    }
++
++    public void setGameProfile(@Nullable GameProfile gameprofile) {
++        this.a = 3;
++        this.g = gameprofile;
++        this.i();
++    }
++
++    private void i() {
++        this.g = b(this.g);
++        this.update();
++    }
++
++    public static GameProfile b(GameProfile gameprofile) {
++        if (gameprofile != null && !UtilColor.b(gameprofile.getName())) {
++            if (gameprofile.isComplete() && gameprofile.getProperties().containsKey("textures")) {
++                return gameprofile;
++            } else if (TileEntitySkull.j != null && TileEntitySkull.k != null) {
++                GameProfile gameprofile1 = TileEntitySkull.j.getProfile(gameprofile.getName());
++
++                if (gameprofile1 == null) {
++                    return gameprofile;
++                } else {
++                    Property property = (Property) Iterables.getFirst(gameprofile1.getProperties().get("textures"), (Object) null);
++
++                    if (property == null) {
++                        gameprofile1 = TileEntitySkull.k.fillProfileProperties(gameprofile1, true);
++                    }
++
++                    return gameprofile1;
++                }
++            } else {
++                return gameprofile;
++            }
++        } else {
++            return gameprofile;
++        }
++    }
++
++    public int getSkullType() {
++        return this.a;
++    }
++
++    public void setRotation(int i) {
++        this.rotation = i;
++    }
++
++    public void a(EnumBlockMirror enumblockmirror) {
++        if (this.world != null && this.world.getType(this.getPosition()).get(BlockSkull.FACING) == EnumDirection.UP) {
++            this.rotation = enumblockmirror.a(this.rotation, 16);
++        }
++
++    }
++
++    public void a(EnumBlockRotation enumblockrotation) {
++        if (this.world != null && this.world.getType(this.getPosition()).get(BlockSkull.FACING) == EnumDirection.UP) {
++            this.rotation = enumblockrotation.a(this.rotation, 16);
++        }
++
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/WorldGenLargeFeature.java b/src/main/java/net/minecraft/server/WorldGenLargeFeature.java
+new file mode 100644
+index 000000000..5781a173c
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/WorldGenLargeFeature.java
+@@ -0,0 +1,144 @@
++package net.minecraft.server;
++
++import com.google.common.collect.Lists;
++import java.util.Arrays;
++import java.util.Iterator;
++import java.util.List;
++import java.util.Map;
++import java.util.Random;
++import java.util.Map.Entry;
++
++public class WorldGenLargeFeature extends StructureGenerator {
++
++    private static final List<BiomeBase> a = Arrays.asList(new BiomeBase[] { Biomes.d, Biomes.s, Biomes.w, Biomes.x, Biomes.h, Biomes.n, Biomes.F});
++    private final List<BiomeBase.BiomeMeta> b;
++    private int d;
++    private final int h;
++
++    public WorldGenLargeFeature() {
++        this.b = Lists.newArrayList();
++        this.d = 32;
++        this.h = 8;
++        this.b.add(new BiomeBase.BiomeMeta(EntityWitch.class, 1, 1, 1));
++    }
++
++    public WorldGenLargeFeature(Map<String, String> map) {
++        this();
++        Iterator iterator = map.entrySet().iterator();
++
++        while (iterator.hasNext()) {
++            Entry entry = (Entry) iterator.next();
++
++            if (((String) entry.getKey()).equals("distance")) {
++                this.d = MathHelper.a((String) entry.getValue(), this.d, 9);
++            }
++        }
++
++    }
++
++    public String a() {
++        return "Temple";
++    }
++
++    protected boolean a(int i, int j) {
++        int k = i;
++        int l = j;
++
++        if (i < 0) {
++            i -= this.d - 1;
++        }
++
++        if (j < 0) {
++            j -= this.d - 1;
++        }
++
++        int i1 = i / this.d;
++        int j1 = j / this.d;
++        Random random = this.g.a(i1, j1, 14357617);
++
++        i1 *= this.d;
++        j1 *= this.d;
++        i1 += random.nextInt(this.d - 8);
++        j1 += random.nextInt(this.d - 8);
++        if (k == i1 && l == j1) {
++            BiomeBase biomebase = this.g.getWorldChunkManager().getBiome(new BlockPosition(k * 16 + 8, 0, l * 16 + 8));
++
++            if (biomebase == null) {
++                return false;
++            }
++
++            Iterator iterator = WorldGenLargeFeature.a.iterator();
++
++            while (iterator.hasNext()) {
++                BiomeBase biomebase1 = (BiomeBase) iterator.next();
++
++                if (biomebase == biomebase1) {
++                    return true;
++                }
++            }
++        }
++
++        return false;
++    }
++
++    public BlockPosition getNearestGeneratedFeature(World world, BlockPosition blockposition, boolean flag) {
++        this.g = world;
++        return a(world, this, blockposition, this.d, 8, 14357617, false, 100, flag);
++    }
++
++    protected StructureStart b(int i, int j) {
++        return new WorldGenLargeFeature.WorldGenLargeFeatureStart(this.g, this.f, i, j);
++    }
++
++    public boolean a(BlockPosition blockposition) {
++        StructureStart structurestart = this.c(blockposition);
++
++        if (structurestart != null && structurestart instanceof WorldGenLargeFeature.WorldGenLargeFeatureStart && !structurestart.a.isEmpty()) {
++            StructurePiece structurepiece = (StructurePiece) structurestart.a.get(0);
++
++            return structurepiece instanceof WorldGenRegistration.WorldGenWitchHut;
++        } else {
++            return false;
++        }
++    }
++
++    public List<BiomeBase.BiomeMeta> b() {
++        return this.b;
++    }
++
++    public static class WorldGenLargeFeatureStart extends StructureStart {
++
++        public WorldGenLargeFeatureStart() {}
++
++        public WorldGenLargeFeatureStart(World world, Random random, int i, int j) {
++            this(world, random, i, j, world.getBiome(new BlockPosition(i * 16 + 8, 0, j * 16 + 8)));
++        }
++
++        public WorldGenLargeFeatureStart(World world, Random random, int i, int j, BiomeBase biomebase) {
++            super(i, j);
++            if (biomebase != Biomes.w && biomebase != Biomes.x) {
++                if (biomebase == Biomes.h) {
++                    WorldGenRegistration.WorldGenWitchHut worldgenregistration_worldgenwitchhut = new WorldGenRegistration.WorldGenWitchHut(random, i * 16, j * 16);
++
++                    this.a.add(worldgenregistration_worldgenwitchhut);
++                } else if (biomebase != Biomes.d && biomebase != Biomes.s) {
++                    if (biomebase == Biomes.n || biomebase == Biomes.F) {
++                        WorldGenRegistration.b worldgenregistration_b = new WorldGenRegistration.b(random, i * 16, j * 16);
++
++                        this.a.add(worldgenregistration_b);
++                    }
++                } else {
++                    WorldGenRegistration.WorldGenPyramidPiece worldgenregistration_worldgenpyramidpiece = new WorldGenRegistration.WorldGenPyramidPiece(random, i * 16, j * 16);
++
++                    this.a.add(worldgenregistration_worldgenpyramidpiece);
++                }
++            } else {
++                WorldGenRegistration.WorldGenJungleTemple worldgenregistration_worldgenjungletemple = new WorldGenRegistration.WorldGenJungleTemple(random, i * 16, j * 16);
++
++                this.a.add(worldgenregistration_worldgenjungletemple);
++            }
++
++            this.d();
++        }
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/WorldGenMonument.java b/src/main/java/net/minecraft/server/WorldGenMonument.java
+new file mode 100644
+index 000000000..89a52f9c4
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/WorldGenMonument.java
+@@ -0,0 +1,176 @@
++package net.minecraft.server;
++
++import com.google.common.collect.Lists;
++import com.google.common.collect.Sets;
++import java.util.Arrays;
++import java.util.Iterator;
++import java.util.List;
++import java.util.Map;
++import java.util.Random;
++import java.util.Set;
++import java.util.Map.Entry;
++
++public class WorldGenMonument extends StructureGenerator {
++
++    private int d;
++    private int h;
++    public static final List<BiomeBase> a = Arrays.asList(new BiomeBase[] { Biomes.a, Biomes.z, Biomes.i, Biomes.l, Biomes.m});
++    public static final List<BiomeBase> b = Arrays.asList(new BiomeBase[] { Biomes.z});
++    private static final List<BiomeBase.BiomeMeta> i = Lists.newArrayList();
++
++    public WorldGenMonument() {
++        this.d = 32;
++        this.h = 5;
++    }
++
++    public WorldGenMonument(Map<String, String> map) {
++        this();
++        Iterator iterator = map.entrySet().iterator();
++
++        while (iterator.hasNext()) {
++            Entry entry = (Entry) iterator.next();
++
++            if (((String) entry.getKey()).equals("spacing")) {
++                this.d = MathHelper.a((String) entry.getValue(), this.d, 1);
++            } else if (((String) entry.getKey()).equals("separation")) {
++                this.h = MathHelper.a((String) entry.getValue(), this.h, 1);
++            }
++        }
++
++    }
++
++    public String a() {
++        return "Monument";
++    }
++
++    protected boolean a(int i, int j) {
++        int k = i;
++        int l = j;
++
++        if (i < 0) {
++            i -= this.d - 1;
++        }
++
++        if (j < 0) {
++            j -= this.d - 1;
++        }
++
++        int i1 = i / this.d;
++        int j1 = j / this.d;
++        Random random = this.g.a(i1, j1, 10387313);
++
++        i1 *= this.d;
++        j1 *= this.d;
++        i1 += (random.nextInt(this.d - this.h) + random.nextInt(this.d - this.h)) / 2;
++        j1 += (random.nextInt(this.d - this.h) + random.nextInt(this.d - this.h)) / 2;
++        if (k == i1 && l == j1) {
++            if (!this.g.getWorldChunkManager().a(k * 16 + 8, l * 16 + 8, 16, WorldGenMonument.b)) {
++                return false;
++            }
++
++            boolean flag = this.g.getWorldChunkManager().a(k * 16 + 8, l * 16 + 8, 29, WorldGenMonument.a);
++
++            if (flag) {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    public BlockPosition getNearestGeneratedFeature(World world, BlockPosition blockposition, boolean flag) {
++        this.g = world;
++        return a(world, this, blockposition, this.d, this.h, 10387313, true, 100, flag);
++    }
++
++    protected StructureStart b(int i, int j) {
++        return new WorldGenMonument.WorldGenMonumentStart(this.g, this.f, i, j);
++    }
++
++    public List<BiomeBase.BiomeMeta> b() {
++        return WorldGenMonument.i;
++    }
++
++    static {
++        WorldGenMonument.i.add(new BiomeBase.BiomeMeta(EntityGuardian.class, 1, 2, 4));
++    }
++
++    public static class WorldGenMonumentStart extends StructureStart {
++
++        private final Set<ChunkCoordIntPair> c = Sets.newHashSet();
++        private boolean d;
++
++        public WorldGenMonumentStart() {}
++
++        public WorldGenMonumentStart(World world, Random random, int i, int j) {
++            super(i, j);
++            this.b(world, random, i, j);
++        }
++
++        private void b(World world, Random random, int i, int j) {
++            random.setSeed(world.getSeed());
++            long k = random.nextLong();
++            long l = random.nextLong();
++            long i1 = (long) i * k;
++            long j1 = (long) j * l;
++
++            random.setSeed(i1 ^ j1 ^ world.getSeed());
++            int k1 = i * 16 + 8 - 29;
++            int l1 = j * 16 + 8 - 29;
++            EnumDirection enumdirection = EnumDirection.EnumDirectionLimit.HORIZONTAL.a(random);
++
++            this.a.add(new WorldGenMonumentPieces.WorldGenMonumentPiece1(random, k1, l1, enumdirection));
++            this.d();
++            this.d = true;
++        }
++
++        public void a(World world, Random random, StructureBoundingBox structureboundingbox) {
++            if (!this.d) {
++                this.a.clear();
++                this.b(world, random, this.e(), this.f());
++            }
++
++            super.a(world, random, structureboundingbox);
++        }
++
++        public boolean a(ChunkCoordIntPair chunkcoordintpair) {
++            return this.c.contains(chunkcoordintpair) ? false : super.a(chunkcoordintpair);
++        }
++
++        public void b(ChunkCoordIntPair chunkcoordintpair) {
++            super.b(chunkcoordintpair);
++            this.c.add(chunkcoordintpair);
++        }
++
++        public void a(NBTTagCompound nbttagcompound) {
++            super.a(nbttagcompound);
++            NBTTagList nbttaglist = new NBTTagList();
++            Iterator iterator = this.c.iterator();
++
++            while (iterator.hasNext()) {
++                ChunkCoordIntPair chunkcoordintpair = (ChunkCoordIntPair) iterator.next();
++                NBTTagCompound nbttagcompound1 = new NBTTagCompound();
++
++                nbttagcompound1.setInt("X", chunkcoordintpair.x);
++                nbttagcompound1.setInt("Z", chunkcoordintpair.z);
++                nbttaglist.add(nbttagcompound1);
++            }
++
++            nbttagcompound.set("Processed", nbttaglist);
++        }
++
++        public void b(NBTTagCompound nbttagcompound) {
++            super.b(nbttagcompound);
++            if (nbttagcompound.hasKeyOfType("Processed", 9)) {
++                NBTTagList nbttaglist = nbttagcompound.getList("Processed", 10);
++
++                for (int i = 0; i < nbttaglist.size(); ++i) {
++                    NBTTagCompound nbttagcompound1 = nbttaglist.get(i);
++
++                    this.c.add(new ChunkCoordIntPair(nbttagcompound1.getInt("X"), nbttagcompound1.getInt("Z")));
++                }
++            }
++
++        }
++    }
++}
+diff --git a/src/main/java/net/minecraft/server/WorldGenVillage.java b/src/main/java/net/minecraft/server/WorldGenVillage.java
+new file mode 100644
+index 000000000..11a6ef7e5
+--- /dev/null
++++ b/src/main/java/net/minecraft/server/WorldGenVillage.java
+@@ -0,0 +1,143 @@
++package net.minecraft.server;
++
++import java.util.Arrays;
++import java.util.Iterator;
++import java.util.List;
++import java.util.Map;
++import java.util.Random;
++import java.util.Map.Entry;
++
++public class WorldGenVillage extends StructureGenerator {
++
++    public static final List<BiomeBase> a = Arrays.asList(new BiomeBase[] { Biomes.c, Biomes.d, Biomes.K, Biomes.g});
++    private int b;
++    private int d;
++    private final int h;
++
++    public WorldGenVillage() {
++        this.d = 32;
++        this.h = 8;
++    }
++
++    public WorldGenVillage(Map<String, String> map) {
++        this();
++        Iterator iterator = map.entrySet().iterator();
++
++        while (iterator.hasNext()) {
++            Entry entry = (Entry) iterator.next();
++
++            if (((String) entry.getKey()).equals("size")) {
++                this.b = MathHelper.a((String) entry.getValue(), this.b, 0);
++            } else if (((String) entry.getKey()).equals("distance")) {
++                this.d = MathHelper.a((String) entry.getValue(), this.d, 9);
++            }
++        }
++
++    }
++
++    public String a() {
++        return "Village";
++    }
++
++    protected boolean a(int i, int j) {
++        int k = i;
++        int l = j;
++
++        if (i < 0) {
++            i -= this.d - 1;
++        }
++
++        if (j < 0) {
++            j -= this.d - 1;
++        }
++
++        int i1 = i / this.d;
++        int j1 = j / this.d;
++        Random random = this.g.a(i1, j1, 10387312);
++
++        i1 *= this.d;
++        j1 *= this.d;
++        i1 += random.nextInt(this.d - 8);
++        j1 += random.nextInt(this.d - 8);
++        if (k == i1 && l == j1) {
++            boolean flag = this.g.getWorldChunkManager().a(k * 16 + 8, l * 16 + 8, 0, WorldGenVillage.a);
++
++            if (flag) {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    public BlockPosition getNearestGeneratedFeature(World world, BlockPosition blockposition, boolean flag) {
++        this.g = world;
++        return a(world, this, blockposition, this.d, 8, 10387312, false, 100, flag);
++    }
++
++    protected StructureStart b(int i, int j) {
++        return new WorldGenVillage.WorldGenVillageStart(this.g, this.f, i, j, this.b);
++    }
++
++    public static class WorldGenVillageStart extends StructureStart {
++
++        private boolean c;
++
++        public WorldGenVillageStart() {}
++
++        public WorldGenVillageStart(World world, Random random, int i, int j, int k) {
++            super(i, j);
++            List list = WorldGenVillagePieces.a(random, k);
++            WorldGenVillagePieces.WorldGenVillageStartPiece worldgenvillagepieces_worldgenvillagestartpiece = new WorldGenVillagePieces.WorldGenVillageStartPiece(world.getWorldChunkManager(), 0, random, (i << 4) + 2, (j << 4) + 2, list, k);
++
++            this.a.add(worldgenvillagepieces_worldgenvillagestartpiece);
++            worldgenvillagepieces_worldgenvillagestartpiece.a((StructurePiece) worldgenvillagepieces_worldgenvillagestartpiece, this.a, random);
++            List list1 = worldgenvillagepieces_worldgenvillagestartpiece.f;
++            List list2 = worldgenvillagepieces_worldgenvillagestartpiece.e;
++
++            int l;
++
++            while (!list1.isEmpty() || !list2.isEmpty()) {
++                StructurePiece structurepiece;
++
++                if (list1.isEmpty()) {
++                    l = random.nextInt(list2.size());
++                    structurepiece = (StructurePiece) list2.remove(l);
++                    structurepiece.a((StructurePiece) worldgenvillagepieces_worldgenvillagestartpiece, this.a, random);
++                } else {
++                    l = random.nextInt(list1.size());
++                    structurepiece = (StructurePiece) list1.remove(l);
++                    structurepiece.a((StructurePiece) worldgenvillagepieces_worldgenvillagestartpiece, this.a, random);
++                }
++            }
++
++            this.d();
++            l = 0;
++            Iterator iterator = this.a.iterator();
++
++            while (iterator.hasNext()) {
++                StructurePiece structurepiece1 = (StructurePiece) iterator.next();
++
++                if (!(structurepiece1 instanceof WorldGenVillagePieces.WorldGenVillageRoadPiece)) {
++                    ++l;
++                }
++            }
++
++            this.c = l > 2;
++        }
++
++        public boolean a() {
++            return this.c;
++        }
++
++        public void a(NBTTagCompound nbttagcompound) {
++            super.a(nbttagcompound);
++            nbttagcompound.setBoolean("Valid", this.c);
++        }
++
++        public void b(NBTTagCompound nbttagcompound) {
++            super.b(nbttagcompound);
++            this.c = nbttagcompound.getBoolean("Valid");
++        }
++    }
++}
+diff --git a/src/main/java/org/spigotmc/SneakyThrow.java b/src/main/java/org/spigotmc/SneakyThrow.java
+new file mode 100644
+index 000000000..31fc0a984
+--- /dev/null
++++ b/src/main/java/org/spigotmc/SneakyThrow.java
+@@ -0,0 +1,15 @@
++package org.spigotmc;
++
++public class SneakyThrow
++{
++
++    public static void sneaky(Throwable t)
++    {
++        throw SneakyThrow.<RuntimeException>superSneaky( t );
++    }
++
++    private static <T extends Throwable> T superSneaky(Throwable t) throws T
++    {
++        throw (T) t;
++    }
++}
+-- 
+2.14.1
+

@@ -43,7 +43,8 @@ public class VersionCommand extends BukkitCommand {
         if (!testPermission(sender)) return true;
 
         if (args.length == 0) {
-            sender.sendMessage("VefLand-1.12.2 By Vlvxingze|QQ 1207223090|GelandiAssociation!QGroup 664015345");
+            sender.sendMessage("This server is running VefLand-1.12.2 version " + Bukkit.getVersion() + " (Implementing API version " + Bukkit.getBukkitVersion() + ")");
+            sender.sendMessage("VefLand GelandiAssociation! Developer by Vlvxingze!QGroup 664015345.");
         } else {
             StringBuilder name = new StringBuilder();
 

@@ -1,4 +1,4 @@
-	package net.minecraft.server;
+package net.minecraft.server;
 
 import com.google.common.base.Function;
 import com.google.common.base.MoreObjects;
@@ -35,26 +35,21 @@ public abstract class World implements IBlockAccess {
     private int a = 63;
     protected boolean d;
     // Spigot start - guard entity list from removals
-    public final List<Entity> entityList = new java.util.ArrayList<Entity>()
-    {
+    public final List<Entity> entityList = new java.util.ArrayList<Entity>() {
         @Override
-        public Entity remove(int index)
-        {
+        public Entity remove(int index) {
             guard();
-            return super.remove( index );
+            return super.remove(index);
         }
 
         @Override
-        public boolean remove(Object o)
-        {
+        public boolean remove(Object o) {
             guard();
-            return super.remove( o );
+            return super.remove(o);
         }
 
-        private void guard()
-        {
-            if ( guardEntityList )
-            {
+        private void guard() {
+            if (guardEntityList) {
                 throw new java.util.ConcurrentModificationException();
             }
         }
@@ -108,18 +103,18 @@ public abstract class World implements IBlockAccess {
 
     public boolean captureBlockStates = false;
     public boolean captureTreeGeneration = false;
-    public ArrayList<BlockState> capturedBlockStates= new ArrayList<BlockState>(){
+    public ArrayList<BlockState> capturedBlockStates = new ArrayList<BlockState>() {
         @Override
-        public boolean add( BlockState blockState ) {
+        public boolean add(BlockState blockState) {
             Iterator<BlockState> blockStateIterator = this.iterator();
-            while( blockStateIterator.hasNext() ) {
+            while (blockStateIterator.hasNext()) {
                 BlockState blockState1 = blockStateIterator.next();
-                if ( blockState1.getLocation().equals( blockState.getLocation() ) ) {
+                if (blockState1.getLocation().equals(blockState.getLocation())) {
                     return false;
                 }
             }
 
-            return super.add( blockState );
+            return super.add(blockState);
         }
     };
     public List<EntityItem> captureDrops;
@@ -150,13 +145,13 @@ public abstract class World implements IBlockAccess {
     }
 
     protected World(IDataManager idatamanager, WorldData worlddata, WorldProvider worldprovider, MethodProfiler methodprofiler, boolean flag, ChunkGenerator gen, org.bukkit.World.Environment env) {
-        this.spigotConfig = new org.spigotmc.SpigotWorldConfig( worlddata.getName() ); // Spigot
+        this.spigotConfig = new org.spigotmc.SpigotWorldConfig(worlddata.getName()); // Spigot
         this.generator = gen;
         this.world = new CraftWorld((WorldServer) this, gen, env);
         this.ticksPerAnimalSpawns = this.getServer().getTicksPerAnimalSpawns(); // CraftBukkit
         this.ticksPerMonsterSpawns = this.getServer().getTicksPerMonsterSpawns(); // CraftBukkit
         // CraftBukkit end
-        this.u = Lists.newArrayList(new IWorldAccess[] { this.t});
+        this.u = Lists.newArrayList(new IWorldAccess[]{this.t});
         this.N = Calendar.getInstance();
         this.scoreboard = new Scoreboard();
         this.allowMonsters = true;
@@ -192,14 +187,16 @@ public abstract class World implements IBlockAccess {
                 getServer().getHandle().sendAll(new PacketPlayOutWorldBorder(worldborder, PacketPlayOutWorldBorder.EnumWorldBorderAction.SET_WARNING_BLOCKS), worldborder.world);
             }
 
-            public void b(WorldBorder worldborder, double d0) {}
+            public void b(WorldBorder worldborder, double d0) {
+            }
 
-            public void c(WorldBorder worldborder, double d0) {}
+            public void c(WorldBorder worldborder, double d0) {
+            }
         });
         this.getServer().addWorld(this.world);
         // CraftBukkit end
         timings = new SpigotTimings.WorldTimingsHandler(this); // Spigot - code below can generate new world and access timings
-                this.entityLimiter = new org.spigotmc.TickLimiter(spigotConfig.entityMaxTickTime);
+        this.entityLimiter = new org.spigotmc.TickLimiter(spigotConfig.entityMaxTickTime);
         this.tileLimiter = new org.spigotmc.TickLimiter(spigotConfig.tileMaxTickTime);
     }
 
@@ -404,8 +401,7 @@ public abstract class World implements IBlockAccess {
                 } else if (!this.isClientSide && (i & 16) == 0) {
                     this.c(blockposition, block);
                 }
-                */
-
+                 */
                 // CraftBukkit start
                 if (!this.captureBlockStates) { // Don't notify clients or update physics while capturing blockstates
                     // Modularize client and physic updates
@@ -584,7 +580,7 @@ public abstract class World implements IBlockAccess {
                 crashreportsystemdetails.a("Source block type", new CrashReportCallable() {
                     public String a() throws Exception {
                         try {
-                            return String.format("ID #%d (%s // %s)", new Object[] { Integer.valueOf(Block.getId(block)), block.a(), block.getClass().getCanonicalName()});
+                            return String.format("ID #%d (%s // %s)", new Object[]{Integer.valueOf(Block.getId(block)), block.a(), block.getClass().getCanonicalName()});
                         } catch (Throwable throwable) {
                             return "ID #" + Block.getId(block);
                         }
@@ -614,7 +610,7 @@ public abstract class World implements IBlockAccess {
                     crashreportsystemdetails.a("Source block type", new CrashReportCallable() {
                         public String a() throws Exception {
                             try {
-                                return String.format("ID #%d (%s // %s)", new Object[] { Integer.valueOf(Block.getId(block)), block.a(), block.getClass().getCanonicalName()});
+                                return String.format("ID #%d (%s // %s)", new Object[]{Integer.valueOf(Block.getId(block)), block.a(), block.getClass().getCanonicalName()});
                             } catch (Throwable throwable) {
                                 return "ID #" + Block.getId(block);
                             }
@@ -976,7 +972,8 @@ public abstract class World implements IBlockAccess {
 
     }
 
-    public void a(double d0, double d1, double d2, SoundEffect soundeffect, SoundCategory soundcategory, float f, float f1, boolean flag) {}
+    public void a(double d0, double d1, double d2, SoundEffect soundeffect, SoundCategory soundcategory, float f, float f1, boolean flag) {
+    }
 
     public void a(BlockPosition blockposition, @Nullable SoundEffect soundeffect) {
         for (int i = 0; i < this.u.size(); ++i) {
@@ -1014,8 +1011,10 @@ public abstract class World implements IBlockAccess {
     }
 
     public boolean addEntity(Entity entity, SpawnReason spawnReason) { // Changed signature, added SpawnReason
-        org.spigotmc.AsyncCatcher.catchOp( "entity add"); // Spigot
-        if (entity == null) return false;
+        org.spigotmc.AsyncCatcher.catchOp("entity add"); // Spigot
+        if (entity == null) {
+            return false;
+        }
 
         org.bukkit.event.Cancellable event = null;
         if (entity instanceof EntityLiving && !(entity instanceof EntityPlayer)) {
@@ -1036,10 +1035,9 @@ public abstract class World implements IBlockAccess {
         } else if (entity.getBukkitEntity() instanceof org.bukkit.entity.Projectile) {
             // Not all projectiles extend EntityProjectile, so check for Bukkit interface instead
             event = CraftEventFactory.callProjectileLaunchEvent(entity);
-        } else if (entity.getBukkitEntity() instanceof org.bukkit.entity.Vehicle){
+        } else if (entity.getBukkitEntity() instanceof org.bukkit.entity.Vehicle) {
             event = CraftEventFactory.callVehicleCreateEvent(entity);
-        }
-        // Spigot start
+        } // Spigot start
         else if (entity instanceof EntityExperienceOrb) {
             EntityExperienceOrb xp = (EntityExperienceOrb) entity;
             double radius = spigotConfig.expMerge;
@@ -1105,7 +1103,7 @@ public abstract class World implements IBlockAccess {
     }
 
     public void kill(Entity entity) {
-        org.spigotmc.AsyncCatcher.catchOp( "entity kill"); // Spigot
+        org.spigotmc.AsyncCatcher.catchOp("entity kill"); // Spigot
         if (entity.isVehicle()) {
             entity.ejectPassengers();
         }
@@ -1118,16 +1116,12 @@ public abstract class World implements IBlockAccess {
         if (entity instanceof EntityHuman) {
             this.players.remove(entity);
             // Spigot start
-            for ( Object o : worldMaps.c )
-            {
-                if ( o instanceof WorldMap )
-                {
+            for (Object o : worldMaps.c) {
+                if (o instanceof WorldMap) {
                     WorldMap map = (WorldMap) o;
-                    map.k.remove( entity );
-                    for ( Iterator<WorldMap.WorldMapHumanTracker> iter = (Iterator<WorldMap.WorldMapHumanTracker>) map.i.iterator(); iter.hasNext(); )
-                    {
-                        if ( iter.next().trackee == entity )
-                        {
+                    map.k.remove(entity);
+                    for (Iterator<WorldMap.WorldMapHumanTracker> iter = (Iterator<WorldMap.WorldMapHumanTracker>) map.i.iterator(); iter.hasNext();) {
+                        if (iter.next().trackee == entity) {
                             iter.remove();
                         }
                     }
@@ -1141,7 +1135,7 @@ public abstract class World implements IBlockAccess {
     }
 
     public void removeEntity(Entity entity) {
-        org.spigotmc.AsyncCatcher.catchOp( "entity remove"); // Spigot
+        org.spigotmc.AsyncCatcher.catchOp("entity remove"); // Spigot
         entity.b(false);
         entity.die();
         if (entity instanceof EntityHuman) {
@@ -1150,22 +1144,22 @@ public abstract class World implements IBlockAccess {
         }
 
         if (!guardEntityList) { // Spigot - It will get removed after the tick if we are ticking
-        int i = entity.ab;
-        int j = entity.ad;
+            int i = entity.ab;
+            int j = entity.ad;
 
-        if (entity.aa && this.isChunkLoaded(i, j, true)) {
-            this.getChunkAt(i, j).b(entity);
-        }
-
-        // CraftBukkit start - Decrement loop variable field if we've already ticked this entity
-        int index = this.entityList.indexOf(entity);
-        if (index != -1) {
-            if (index <= this.tickPosition) {
-                this.tickPosition--;
+            if (entity.aa && this.isChunkLoaded(i, j, true)) {
+                this.getChunkAt(i, j).b(entity);
             }
-            this.entityList.remove(index);
-        }
-        // CraftBukkit end
+
+            // CraftBukkit start - Decrement loop variable field if we've already ticked this entity
+            int index = this.entityList.indexOf(entity);
+            if (index != -1) {
+                if (index <= this.tickPosition) {
+                    this.tickPosition--;
+                }
+                this.entityList.remove(index);
+            }
+            // CraftBukkit end
         } // Spigot
         this.c(entity);
     }
@@ -1338,11 +1332,14 @@ public abstract class World implements IBlockAccess {
         return true;
     }
 
-    public void a(BlockPosition blockposition, Block block, int i) {}
+    public void a(BlockPosition blockposition, Block block, int i) {
+    }
 
-    public void a(BlockPosition blockposition, Block block, int i, int j) {}
+    public void a(BlockPosition blockposition, Block block, int i, int j) {
+    }
 
-    public void b(BlockPosition blockposition, Block block, int i, int j) {}
+    public void b(BlockPosition blockposition, Block block, int i, int j) {
+    }
 
     public void tickEntities() {
         this.methodProfiler.a("entities");
@@ -1411,7 +1408,9 @@ public abstract class World implements IBlockAccess {
         guardEntityList = true; // Spigot
         // CraftBukkit start - Use field for loop variable
         int entitiesThisCycle = 0;
-        if (tickPosition < 0) tickPosition = 0;
+        if (tickPosition < 0) {
+            tickPosition = 0;
+        }
         for (entityLimiter.initTick();
                 entitiesThisCycle < entityList.size() && (entitiesThisCycle % 10 != 0 || entityLimiter.shouldContinue());
                 tickPosition++, entitiesThisCycle++) {
@@ -1505,8 +1504,7 @@ public abstract class World implements IBlockAccess {
                         crashreportsystemdetails1 = crashreport1.a("Block entity being ticked");
                         tileentity.a(crashreportsystemdetails1);
                         throw new ReportedException(crashreport1);
-                    }
-                    // Spigot start
+                    } // Spigot start
                     finally {
                         tileentity.tickTimer.stopTiming();
                     }
@@ -1563,7 +1561,8 @@ public abstract class World implements IBlockAccess {
         this.methodProfiler.b();
     }
 
-    protected void l() {}
+    protected void l() {
+    }
 
     public boolean a(TileEntity tileentity) {
         boolean flag = this.tileEntityList.add(tileentity);
@@ -1923,6 +1922,7 @@ public abstract class World implements IBlockAccess {
     }
 
     public Map<BlockPosition, TileEntity> capturedTileEntities = Maps.newHashMap();
+
     @Nullable
     public TileEntity getTileEntity(BlockPosition blockposition) {
         if (this.E(blockposition)) {
@@ -1968,14 +1968,14 @@ public abstract class World implements IBlockAccess {
     public void setTileEntity(BlockPosition blockposition, @Nullable TileEntity tileentity) {
         if (!this.E(blockposition)) {
             if (tileentity != null && !tileentity.y()) {
-            // CraftBukkit start
-            if (captureBlockStates) {
-                tileentity.a(this);
-                tileentity.setPosition(blockposition);
-                capturedTileEntities.put(blockposition, tileentity);
-                return;
-            }
-            // CraftBukkit end
+                // CraftBukkit start
+                if (captureBlockStates) {
+                    tileentity.a(this);
+                    tileentity.setPosition(blockposition);
+                    capturedTileEntities.put(blockposition, tileentity);
+                    return;
+                }
+                // CraftBukkit end
                 if (this.O) {
                     tileentity.setPosition(blockposition);
                     Iterator iterator = this.b.iterator();
@@ -2148,7 +2148,8 @@ public abstract class World implements IBlockAccess {
         }
     }
 
-    protected void j() {}
+    protected void j() {
+    }
 
     public void a(BlockPosition blockposition, IBlockData iblockdata, Random random) {
         this.d = true;
@@ -2545,7 +2546,7 @@ public abstract class World implements IBlockAccess {
             }
 
             if (oclass.isAssignableFrom(entity.getClass())) {
-            // if ((!(entity instanceof EntityInsentient) || !((EntityInsentient) entity).isPersistent()) && oclass.isAssignableFrom(entity.getClass())) {
+                // if ((!(entity instanceof EntityInsentient) || !((EntityInsentient) entity).isPersistent()) && oclass.isAssignableFrom(entity.getClass())) {
                 // CraftBukkit end
                 ++i;
             }
@@ -2555,7 +2556,7 @@ public abstract class World implements IBlockAccess {
     }
 
     public void a(Collection<Entity> collection) {
-        org.spigotmc.AsyncCatcher.catchOp( "entity world add"); // Spigot
+        org.spigotmc.AsyncCatcher.catchOp("entity world add"); // Spigot
         // CraftBukkit start
         // this.entityList.addAll(collection);
         Iterator iterator = collection.iterator();
@@ -2846,7 +2847,8 @@ public abstract class World implements IBlockAccess {
         return true;
     }
 
-    public void broadcastEntityEffect(Entity entity, byte b0) {}
+    public void broadcastEntityEffect(Entity entity, byte b0) {
+    }
 
     public IChunkProvider getChunkProvider() {
         return this.chunkProvider;
@@ -2868,7 +2870,8 @@ public abstract class World implements IBlockAccess {
         return this.worldData.w();
     }
 
-    public void everyoneSleeping() {}
+    public void everyoneSleeping() {
+    }
 
     // CraftBukkit start
     // Calls the method that checks to see if players are sleeping

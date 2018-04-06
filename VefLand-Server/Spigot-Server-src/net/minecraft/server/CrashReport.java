@@ -1,6 +1,7 @@
 package net.minecraft.server;
 
 import com.google.common.collect.Lists;
+import com.relatev.minecraft.VefLand.Utils.AllUse;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
@@ -205,7 +206,10 @@ public class CrashReport {
     public String e() {
         StringBuilder stringbuilder = new StringBuilder();
 
-        stringbuilder.append("---- Minecraft Crash Report ----\n");
+        stringbuilder.append("---- VefLand Crash Report ----\n");
+        stringbuilder.append("*** VefLand-V" + AllUse.version+ " ***\n");
+        stringbuilder.append("请发送本错误报告到乐乐：QQ1207223090 或 格兰蒂报错反馈处：http://www.relatev.com/forum.php?mod=viewthread&tid=221\n");
+        stringbuilder.append("Please send this error report to Lele: QQ1207223090 or grant wrong feedback: http://www.relatev.com/forum.php?mod=viewthread&tid=221\n");
         stringbuilder.append("// ");
         stringbuilder.append(i());
         stringbuilder.append("\n\n");

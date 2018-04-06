@@ -9,6 +9,7 @@ import com.mojang.authlib.GameProfile;
 import com.mojang.authlib.GameProfileRepository;
 import com.mojang.authlib.minecraft.MinecraftSessionService;
 import com.mojang.authlib.yggdrasil.YggdrasilAuthenticationService;
+import com.relatev.minecraft.VefLand.Utils.MultiSecondaryThread;
 import com.relatev.minecraft.VefLand.Utils.MultiThreadConcurrent;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufOutputStream;
@@ -37,6 +38,7 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.Executors;
 import java.util.concurrent.FutureTask;
 import java.util.function.Supplier;
+import java.util.logging.Level;
 import javax.annotation.Nullable;
 import javax.imageio.ImageIO;
 import org.apache.commons.lang3.Validate;
@@ -128,6 +130,7 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
     public final SlackActivityAccountant slackActivityAccountant = new SlackActivityAccountant();
     // Spigot end
     private int WorldLoadi;
+    private boolean ATickWorkOver;
 
     public MinecraftServer(OptionSet options, Proxy proxy, DataConverterManager dataconvertermanager, YggdrasilAuthenticationService yggdrasilauthenticationservice, MinecraftSessionService minecraftsessionservice, GameProfileRepository gameprofilerepository, UserCache usercache) {
         io.netty.util.ResourceLeakDetector.setEnabled(false); // Spigot - disable
@@ -387,7 +390,7 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
             });
         }
         MultiThreadConcurrent.post(runs);
-        
+
         for (WorldServer world : this.worlds) {
             this.server.getPluginManager().callEvent(new org.bukkit.event.world.WorldLoadEvent(world.getWorld()));
         }
@@ -597,6 +600,7 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
                 this.a((CrashReport) null);
             }
         } catch (Throwable throwable) {
+            MinecraftServer.LOGGER.error("VefLand 出现了一个严重问题并崩服了，你可以联系乐乐：QQ1207223090来寻求帮助!");
             MinecraftServer.LOGGER.error("Encountered an unexpected exception", throwable);
             // Spigot Start
             if (throwable.getCause() != null) {
@@ -751,6 +755,7 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
     }
 
     public void D() {
+        ATickWorkOver = false;
         SpigotTimings.schedulerTimer.startTiming(); // Spigot
         this.server.getScheduler().mainThreadHeartbeat(this.ticks); // CraftBukkit
         SpigotTimings.schedulerTimer.stopTiming(); // Spigot
@@ -829,9 +834,14 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
             }
 
             try {
-                worldserver.timings.tickEntities.startTiming(); // Spigot
-                worldserver.tickEntities();
-                worldserver.timings.tickEntities.stopTiming(); // Spigot
+                MultiSecondaryThread.post(new Runnable() {
+                    @Override
+                    public void run() {
+                        worldserver.timings.tickEntities.startTiming(); // Spigot
+                        worldserver.tickEntities();
+                        worldserver.timings.tickEntities.stopTiming(); // Spigot
+                    }
+                },9);
             } catch (Throwable throwable1) {
                 // Spigot Start
                 try {
@@ -846,9 +856,15 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
 
             this.methodProfiler.b();
             this.methodProfiler.a("tracker");
-            worldserver.timings.tracker.startTiming(); // Spigot
-            worldserver.getTracker().updatePlayers();
-            worldserver.timings.tracker.stopTiming(); // Spigot
+            MultiSecondaryThread.post(new Runnable() {
+                @Override
+                public void run() {
+                    worldserver.timings.tracker.startTiming(); // Spigot
+                    worldserver.getTracker().updatePlayers();
+                    worldserver.timings.tracker.stopTiming(); // Spigot
+                    ATickWorkOver = true;
+                }
+            },9);
             this.methodProfiler.b();
             this.methodProfiler.b();
             // } // CraftBukkit
@@ -877,6 +893,13 @@ public abstract class MinecraftServer implements ICommandListener, Runnable, IAs
         SpigotTimings.tickablesTimer.stopTiming(); // Spigot
 
         this.methodProfiler.b();
+        while(ATickWorkOver == false){
+            try {
+                Thread.sleep(0, 1);
+            } catch (InterruptedException ex) {
+                java.util.logging.Logger.getLogger(MinecraftServer.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        }
     }
 
     public boolean getAllowNether() {
